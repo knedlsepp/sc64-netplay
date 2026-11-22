@@ -202,8 +202,11 @@ static void draw(surface_t *d, int frame) {
     // Eingabezeile (zeigt das Ende, wenn der Text zu lang ist)
     graphics_draw_box(d, 0, INPUT_ROW * 8 - 2, 320, 12, C_KEY);
     char shown[COLS + 1];
-    const char *tail = input_len > COLS - 4 ? input + input_len - (COLS - 4) : input;
-    snprintf(shown, sizeof shown, "> %s%c", tail, (frame / 20) % 2 ? '_' : ' ');
+    int tail_len = input_len > COLS - 4 ? COLS - 4 : input_len;
+    shown[0] = '>'; shown[1] = ' ';
+    memcpy(shown + 2, input + input_len - tail_len, tail_len);
+    shown[2 + tail_len] = (frame / 20) % 2 ? '_' : ' ';
+    shown[3 + tail_len] = 0;
     text_at(d, 0, INPUT_ROW, shown, C_TEXT, 0);
 
     // Tastatur: jede Taste 3 Spalten breit, ab Spalte 5
