@@ -29,7 +29,7 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/DragonMinded/libdragon.git "$RUNNER_TEMP/libdragon"
           cd "$RUNNER_TEMP/libdragon"
-          sudo -E env "PATH=$PATH" ./build.sh
+          sudo env "PATH=$PATH" "N64_INST=$N64_INST" ./build.sh
 
       - name: ROM bauen
         run: make -C rom
