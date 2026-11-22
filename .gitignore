@@ -1,2 +1,4 @@
 rom/build/
 rom/*.z64
+result
+result-*
