@@ -1,0 +1,44 @@
+{
+  "nodes": {
+    "libdragon": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789428964,
+        "narHash": "sha256-lpv0I6y/x65CV5ZF+9XiC4kmhr5PdNVUmTJp12l7aYM=",
+        "owner": "DragonMinded",
+        "repo": "libdragon",
+        "rev": "e356bf3f56f7afbf7e5246329562f145965cfdfc",
+        "type": "github"
+      },
+      "original": {
+        "owner": "DragonMinded",
+        "repo": "libdragon",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1795234589,
+        "narHash": "sha256-f/VVvxf5RsQgWVhUtefoca5ktVg0DA2bnkMOcmSnozo=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "2786a2a72088ecf32aea5b3ec52099e6a7cff78f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "libdragon": "libdragon",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
