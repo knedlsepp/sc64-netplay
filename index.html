@@ -3,603 +3,455 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>N64 Netplay – Test Page (Trystero + SC64)</title>
+<title>SC64 Netplay Modem</title>
 <style>
-  :root { --bg:#f6f5f1; --card:#fff; --text:#222; --muted:#6b6a65; --line:#dcdad2; --accent:#1d7f5f; --err:#b3261e; }
+  :root { --bg:#f6f5f1; --card:#fff; --text:#222; --muted:#6b6a65; --line:#dcdad2; --accent:#1d7f5f; --err:#b3261e; --warn:#9a6700; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#1c1c1a; --card:#262624; --text:#eceae3; --muted:#a3a19a; --line:#3a3936; --accent:#4cc79a; --err:#ff8a80; }
+    :root { --bg:#1c1c1a; --card:#262624; --text:#eceae3; --muted:#a3a19a; --line:#3a3936; --accent:#4cc79a; --err:#ff8a80; --warn:#f0b75a; }
   }
   * { box-sizing: border-box; }
-  body { margin:0; font:15px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--text); }
-  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; display:grid; gap:16px; }
-  h1 { font-size: 24px; margin: 0; font-weight: 600; }
-  h2 { font-size: 17px; margin: 0 0 10px; font-weight: 600; }
-  p.sub { margin: 4px 0 0; color: var(--muted); }
+  body { margin:0; font:16px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; display:grid; gap:16px; }
+  h1 { font-size: 22px; margin: 0; font-weight: 600; }
+  p { margin: 0; }
+  .muted { color: var(--muted); font-size: 14px; }
   section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
-  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  input[type=text], select { padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; }
-  input[type=text] { flex:1; min-width: 160px; }
-  button { padding:8px 14px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; cursor:pointer; }
+  button { width:100%; padding:14px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--text); font:inherit; font-weight:600; cursor:pointer; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
   button:disabled { opacity:.45; cursor:default; }
-  .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
-  @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
-  .log { height: 220px; overflow:auto; border:1px solid var(--line); border-radius:8px; padding:8px; background:var(--bg); font: 13px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
-  .chat { height: 260px; }
-  .muted { color: var(--muted); font-size: 13px; }
-  .err { color: var(--err); }
-  .ok { color: var(--accent); }
-  table { width:100%; border-collapse: collapse; font-size: 14px; }
-  td, th { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); }
-  progress { width: 100%; height: 14px; }
-  .warn { border-color: var(--err); }
-  code { font-family: ui-monospace, monospace; font-size: 13px; }
+  .stack { display:grid; gap:10px; }
+  .row { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:0; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; background:var(--muted); vertical-align:middle; }
+  .on .dot { background:var(--accent); } .wait .dot { background:var(--warn); } .off .dot { background:var(--err); }
+  .val { text-align:right; color:var(--muted); font-size:14px; }
+  progress { width:100%; height:12px; }
+  details summary { cursor:pointer; color:var(--muted); font-size:14px; }
+  .log { margin-top:8px; max-height:260px; overflow:auto; font:12px/1.45 ui-monospace, monospace; white-space:pre-wrap; }
+  .err { color:var(--err); } .ok { color:var(--accent); }
+  a { color: var(--accent); }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>N64 Netplay – Test Page <span class="muted" style="font-size:14px;font-weight:400">Version 8</span></h1>
-    <p class="sub">Static page: browsers find each other via Trystero (Nostr), talk directly over WebRTC and control the SummerCart64 via Web Serial or WebUSB.</p>
+    <h1>SC64 Netplay Modem</h1>
+    <p class="muted">Connects your SummerCart64 to the internet. Everything else happens on your N64.</p>
   </header>
 
-  <section id="envWarn" class="warn" hidden></section>
-
-  <!-- 1. Room -->
-  <section>
-    <h2>1. Join a room</h2>
-    <div class="row">
-      <input id="roomInput" type="text" placeholder="Room name, e.g. n64-night">
-      <button id="joinBtn" class="primary">Join</button>
-      <button id="copyLinkBtn" disabled>Copy invite link</button>
+  <section class="stack">
+    <div id="connectButtons" class="stack">
+      <button id="usbBtn" class="primary" hidden>Connect SC64 (USB, Android)</button>
+      <button id="serialBtn" class="primary" hidden>Connect SC64 (Web Serial)</button>
     </div>
-    <label class="muted" style="display:block;margin-top:8px"><input type="checkbox" id="keepAwake" checked> Keep the screen on while in a room (a locked phone drops the connection)</label>
-    <p class="muted" id="roomStatus">Not connected yet. Everyone using the same room name finds each other automatically.</p>
+    <p class="muted" id="hint">Plug in the SC64 and tap connect. Next time the page connects by itself.</p>
   </section>
 
-  <div class="grid2">
-    <!-- 2. Chat -->
-    <section>
-      <h2>2. Chat</h2>
-      <div id="chatLog" class="log chat"></div>
-      <div class="row" style="margin-top:8px">
-        <input id="nameInput" type="text" placeholder="Your name" style="max-width:130px">
-        <input id="chatInput" type="text" placeholder="Message…" disabled>
-        <button id="sendBtn" disabled>Send</button>
-      </div>
-    </section>
-
-    <!-- 3. Peers -->
-    <section>
-      <h2>3. Connected players</h2>
-      <table>
-        <thead><tr><th>Name</th><th>Ping</th><th>Route</th></tr></thead>
-        <tbody id="peerTable"><tr><td colspan="3" class="muted">Nobody here yet.</td></tr></tbody>
-      </table>
-      <p class="muted">“Route” shows how the connection was made: <b>direct (LAN)</b>, <b>direct (hole punching)</b> via STUN, or <b>relay</b> via TURN.</p>
-    </section>
-  </div>
-
-  <!-- 4. SC64 -->
   <section>
-    <h2>4. SummerCart64</h2>
-    <div class="row">
-      <button id="sc64ConnectBtn" class="primary">Connect SC64 (Web Serial)</button>
-      <button id="sc64UsbBtn" class="primary" hidden>Connect SC64 (WebUSB, Android)</button>
-      <button id="sc64DisconnectBtn" disabled>Disconnect</button>
-      <span id="sc64Status" class="muted">Not connected.</span>
-    </div>
-    <div class="row" style="margin-top:12px">
-      <input id="romFile" type="file" accept=".z64,.n64,.v64,.bin">
-      <select id="saveType" title="Save type">
-        <option value="0">No save</option>
-        <option value="1">EEPROM 4 kbit</option>
-        <option value="2">EEPROM 16 kbit</option>
-        <option value="3">SRAM 256 kbit</option>
-        <option value="4">FlashRAM 1 Mbit</option>
-        <option value="5">SRAM 768 kbit</option>
-        <option value="6">SRAM 1 Mbit</option>
-      </select>
-      <button id="uploadBtn" disabled>Upload ROM</button>
-      <button id="chatRomBtn" disabled>Load N64 Chat ROM</button>
-    </div>
-    <progress id="uploadProgress" value="0" max="1" hidden></progress>
-    <label class="muted" style="display:block;margin-top:8px"><input type="checkbox" id="chatToN64" checked> Forward chat messages to the N64 (for the N64 Chat ROM)</label>
-    <p class="muted">After uploading, power on or reset the N64. .z64, .v64 and .n64 byte orders are converted automatically.</p>
+    <div class="row off" id="stSc64"><span><span class="dot"></span>SummerCart64</span><span class="val">not connected</span></div>
+    <div class="row off" id="stN64"><span><span class="dot"></span>N64 game</span><span class="val">not talking yet</span></div>
+    <div class="row wait" id="stNet"><span><span class="dot"></span>Internet</span><span class="val">loading…</span></div>
+    <div class="row off" id="stLobby"><span><span class="dot"></span>Lobby</span><span class="val">–</span></div>
   </section>
 
-  <!-- 5. Bridge -->
-  <section>
-    <h2>5. Bridge N64 ⇄ Internet</h2>
-    <p class="muted" style="margin-top:0">Whatever a homebrew game sends via <code>USB_WRITE</code> goes to all players. Whatever they send arrives on your N64 via <code>USB_WRITE</code>. Without an N64 you can check the chain with the test button.</p>
-    <div class="row">
-      <button id="testDataBtn" disabled>Send test data to players</button>
-      <button id="clearLogBtn">Clear log</button>
-    </div>
-    <div id="bridgeLog" class="log" style="margin-top:8px"></div>
+  <section class="stack">
+    <button id="lobbyRomBtn" disabled>Load lobby demo ROM onto the SC64</button>
+    <progress id="progress" value="0" max="1" hidden></progress>
+    <p class="muted">Then reset or power on the N64. Keep this page open (the screen stays on).</p>
   </section>
 
-  <p class="muted">Notes: on a PC use Chrome/Edge or Firefox 151+ (Web Serial); on Android use Chrome with a USB OTG cable (WebUSB button). Web Serial requires the page to be opened via <code>https://</code> or <code>http://localhost</code>. The Trystero library is loaded from jsDelivr.</p>
+  <section>
+    <details>
+      <summary>Log</summary>
+      <div id="log" class="log"></div>
+    </details>
+  </section>
+
+  <p class="muted">Protocol: <a href="https://github.com/knedlsepp/sc64-netplay/blob/main/PROTOCOL.md">PROTOCOL.md</a> · Old test page with chat: <a href="test.html">test.html</a></p>
 </main>
 
 <script type="module">
-// ---------- Helpers ----------
+import { Sc64, grantedPorts, requestSerialPort, requestUsbPort, hex } from './sc64.js';
+
+// ---------- small helpers ----------
 const $ = (id) => document.getElementById(id);
 const enc = new TextEncoder(), dec = new TextDecoder();
-const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const time = () => new Date().toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-const hex = (u8, max = 24) => Array.from(u8.slice(0, max), b => b.toString(16).padStart(2, '0')).join(' ') + (u8.length > max ? ' …' : '');
-
-function log(el, html) {
-  const box = $(el);
-  box.insertAdjacentHTML('beforeend', `<div><span class="muted">${time()}</span> ${html}</div>`);
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function log(msg, cls = '') {
+  const box = $('log');
+  const t = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  box.insertAdjacentHTML('beforeend', `<div class="${cls}">${t} ${esc(msg)}</div>`);
+  while (box.childElementCount > 300) box.firstElementChild.remove();
   box.scrollTop = box.scrollHeight;
 }
-const bridge = (html) => log('bridgeLog', html);
+function setStatus(id, state, text) { const el = $(id); el.className = 'row ' + state; el.querySelector('.val').textContent = text; }
+const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), b => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
 
-// ---------- Environment checks ----------
-const warnings = [];
-if (!window.isSecureContext) warnings.push('This page is not running in a secure context. Open it via https:// or http://localhost, otherwise Web Serial will not work.');
-if (!('serial' in navigator) && !('usb' in navigator)) warnings.push('This browser supports neither Web Serial nor WebUSB. Chat and players still work; for the SC64 you need Chrome/Edge (desktop or Android) or Firefox 151+ on desktop.');
-if (!('serial' in navigator)) $('sc64ConnectBtn').hidden = true;
-if ('usb' in navigator) $('sc64UsbBtn').hidden = false;
-if (!('RTCPeerConnection' in window)) warnings.push('WebRTC is not available here (e.g. inside a sandboxed preview). Open the file directly in the browser.');
-if (warnings.length) { $('envWarn').hidden = false; $('envWarn').innerHTML = warnings.map(w => `<p class="err" style="margin:4px 0">${esc(w)}</p>`).join(''); }
+// ---------- protocol constants (see PROTOCOL.md) ----------
+const VERSION = 1, USB_TYPE = 0x40;
+const HELLO = 0x01, BROWSE = 0x02, CREATE = 0x03, JOIN = 0x04, LEAVE = 0x05, SEND = 0x06, SET_INFO = 0x07;
+const STATUS = 0x81, LOBBY_LIST = 0x82, JOINED = 0x83, PLAYER_JOINED = 0x84, PLAYER_LEFT = 0x85, DATA = 0x86, LEFT = 0x87, ERROR = 0x88;
+const LEFT_REQUESTED = 0, LEFT_HOST_GONE = 1, LEFT_FULL = 2, LEFT_NOT_FOUND = 3, LEFT_CONNECTION = 4;
 
-// ---------- Load Trystero ----------
-// Pinned on purpose: Trystero's API changes between minor versions (0.23 and 0.27 were breaking).
-const TRYSTERO_URL = 'https://cdn.jsdelivr.net/npm/trystero@0.27.0/+esm';
-let joinRoom;
-try {
-  ({ joinRoom } = await import(TRYSTERO_URL));
-} catch (e) {
-  $('roomStatus').innerHTML = `<span class="err">Could not load Trystero: ${esc(e.message)}</span>`;
-  $('joinBtn').disabled = true;
+// Message builder: msg(type).u8(…).str(…).bytes(…).build()
+function msg(type) {
+  const parts = [Uint8Array.of(type)];
+  const b = {
+    u8(v) { parts.push(Uint8Array.of(v & 255)); return b; },
+    str(s) { const e = enc.encode(String(s ?? '')).slice(0, 63); parts.push(Uint8Array.of(e.length), e); return b; },
+    bytes(u8) { parts.push(u8); return b; },
+    build() { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; },
+  };
+  return b;
+}
+// Reader for N64 → modem messages
+function reader(u8) {
+  let o = 0;
+  return {
+    u8() { if (o >= u8.length) throw new Error('message too short'); return u8[o++]; },
+    str() { const n = this.u8(); if (o + n > u8.length) throw new Error('string too long'); const s = dec.decode(u8.subarray(o, o + n)); o += n; return s; },
+    rest() { const r = u8.slice(o); o = u8.length; return r; },
+  };
 }
 
-// ---------- Room & chat ----------
-const params = new URLSearchParams(location.search);
-$('roomInput').value = params.get('room') || params.get('raum') || '';   // 'raum' = old links
-try { $('nameInput').value = localStorage.getItem('n64name') || ''; } catch {}
-if (!$('nameInput').value) $('nameInput').value = 'Player-' + Math.floor(Math.random() * 900 + 100);
-$('nameInput').addEventListener('change', () => { try { localStorage.setItem('n64name', $('nameInput').value); } catch {} sendHello?.(); });
-
-let room = null, sendChat, sendN64, sendName, sendHello;
-const peers = new Map(); // peerId -> {name, ping, path}
-
-function myName() { return $('nameInput').value.trim() || 'Anonymous'; }
-
-function renderPeers() {
-  const tb = $('peerTable');
-  if (!peers.size) { tb.innerHTML = '<tr><td colspan="3" class="muted">Nobody here yet.</td></tr>'; return; }
-  tb.innerHTML = [...peers.entries()].map(([id, p]) =>
-    `<tr><td>${esc(p.name || id.slice(0, 6))}</td><td>${p.ping != null ? p.ping + ' ms' : '…'}</td><td>${esc(p.path || '…')}</td></tr>`
-  ).join('');
+// ---------- USB side: batch modem → N64 messages (u16 length + message), one transfer per 40 ms ----------
+const sc64 = new Sc64({
+  onUsbData: (type, payload) => {
+    if (type === USB_TYPE) { try { onN64Message(payload); } catch (e) { log(`Bad message from N64: ${e.message} (${hex(payload)})`, 'err'); } }
+    else if (type === 1) log(`N64 text: ${dec.decode(payload)}`);
+    else log(`N64 sent ${payload.length} bytes of type ${type} (ignored)`, 'muted');
+  },
+  onLog: (m, cls) => log(m, cls),
+  onDisconnect: () => onSc64Gone(),
+});
+let outQueue = [];
+function toN64(bytes) {
+  if (!sc64.connected) return;
+  outQueue.push(bytes);
+  if (outQueue.length > 400) outQueue.splice(0, outQueue.length - 400);   // N64 not reading: drop the oldest
 }
-
-async function detectPath(pc) {
+setInterval(async () => {
+  if (!sc64.connected || !outQueue.length || flushBusy) return;
+  flushBusy = true;
   try {
-    const stats = await pc.getStats();
-    let pair;
-    stats.forEach(r => { if (r.type === 'transport' && r.selectedCandidatePairId) pair = stats.get(r.selectedCandidatePairId); });
-    if (!pair) stats.forEach(r => { if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') pair = r; });
-    if (!pair) return null;
-    const local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
-    const types = [local?.candidateType, remote?.candidateType];
-    if (types.includes('relay')) return 'Relay (TURN)';
-    if (types.every(t => t === 'host')) return 'direct (LAN)';
-    return 'direct (hole punching)';
-  } catch { return null; }
-}
-
-async function refreshPeerInfo() {
-  if (!room) return;
-  const infos = room.getPeers?.() || {};
-  for (const [id, p] of peers) {
-    try { p.ping = Math.round(await room.ping(id)); } catch {}
-    const info = infos[id];
-    if (info?.connection) p.path = (await detectPath(info.connection)) || p.path;
-    else if (info && !info.direct) p.path = `via other peers (${info.hops} hops)`;
-  }
-  renderPeers();
-}
-setInterval(refreshPeerInfo, 3000);
-
-// ---------- Keep the screen on & rejoin after the phone was locked ----------
-// A locked phone (or a tab in the background) gets frozen by the browser, and its WebRTC connections die.
-let wakeLock = null, currentRoom = null, hadPeers = false;
-async function requestWakeLock() {
-  if (!('wakeLock' in navigator) || !$('keepAwake').checked || !currentRoom || document.visibilityState !== 'visible') return;
-  if (wakeLock && !wakeLock.released) return;
-  try { wakeLock = await navigator.wakeLock.request('screen'); } catch { /* e.g. battery saver */ }
-}
-$('keepAwake').addEventListener('change', () => {
-  if ($('keepAwake').checked) requestWakeLock();
-  else { wakeLock?.release().catch(() => {}); wakeLock = null; }
-});
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible' || !currentRoom) return;
-  requestWakeLock();                                    // the browser releases the lock when the page is hidden
-  if (hadPeers && peers.size === 0) {                   // everyone is gone: most likely our side was frozen
-    log('chatLog', '<span class="muted">Back from the background – rejoining the room…</span>');
-    joinNamedRoom(currentRoom);
-  }
-});
-
-$('joinBtn').addEventListener('click', () => joinNamedRoom($('roomInput').value.trim()));
-
-async function joinNamedRoom(name) {
-  if (!name) { $('roomStatus').innerHTML = '<span class="err">Please enter a room name first.</span>'; return; }
-  currentRoom = name; hadPeers = false;
-  requestWakeLock();
-  try {
-    if (room) { const old = room; room = null; peers.clear(); renderPeers(); await old.leave(); }
-
-    room = joinRoom({ appId: 'sc64-netplay' }, name);
-    const chat = room.makeAction('chat'), n64 = room.makeAction('n64'), nameAction = room.makeAction('name');
-    const report = (what) => (e) => log('chatLog', `<span class="err">${what} failed: ${esc(e?.message || e)}</span>`);
-    sendChat = (text) => chat.send(text).catch(report('Sending the message'));
-    sendN64 = (bytes) => n64.send(bytes).catch(report('Sending N64 data'));
-    sendHello = (target) => nameAction.send(myName(), target ? { target } : undefined).catch(() => {});
-
-    room.onPeerJoin(({ peerId }) => {
-      hadPeers = true;
-      peers.set(peerId, { name: null, ping: null, path: null });
-      sendHello(peerId);
-      renderPeers();
-      log('chatLog', `<span class="ok">Someone joined (${esc(peerId.slice(0, 6))}).</span>`);
-    });
-    room.onPeerLeave(({ peerId }) => {
-      const p = peers.get(peerId);
-      peers.delete(peerId); renderPeers();
-      log('chatLog', `<span class="muted">${esc(p?.name || peerId.slice(0, 6))} left.</span>`);
-    });
-    room.onError?.(err => log('chatLog', `<span class="err">Room error: ${esc(err?.message || err)}</span>`));
-    nameAction.onMessage((n, { peerId }) => { const p = peers.get(peerId) || {}; p.name = String(n).slice(0, 40); peers.set(peerId, p); renderPeers(); });
-    chat.onMessage((msg, { peerId }) => {
-      const who = peers.get(peerId)?.name || peerId.slice(0, 6), text = String(msg).slice(0, 2000);
-      log('chatLog', `<b>${esc(who)}:</b> ${esc(text)}`);
-      chatToN64(`${who}: ${text}`);
-    });
-    n64.onMessage((data, { peerId }) => onPeerN64Data(data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength), peerId));
-
-    const url = new URL(location.href); url.search = '?room=' + encodeURIComponent(name);
-    history.replaceState(null, '', url);
-    for (const id of ['chatInput', 'sendBtn', 'copyLinkBtn', 'testDataBtn']) $(id).disabled = false;
-    $('roomStatus').innerHTML = `In room <b>${esc(name)}</b>. Waiting for players…`;
-    const self = await room.getSelf();
-    $('roomStatus').innerHTML = `In room <b>${esc(name)}</b> (your ID: <code>${esc(self.peerId.slice(0, 6))}</code>). Waiting for players…`;
-  } catch (e) {
-    console.error(e);
-    $('roomStatus').innerHTML = `<span class="err">Could not join the room: ${esc(e?.message || e)}</span>`;
-  }
-}
-
-function sendChatMessage() {
-  const text = $('chatInput').value.trim();
-  if (!text || !sendChat) return;
-  sendChat(text);
-  log('chatLog', `<b>You:</b> ${esc(text)}`);
-  chatToN64(`${myName()}: ${text}`);
-  $('chatInput').value = '';
-}
-$('sendBtn').addEventListener('click', sendChatMessage);
-$('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendChatMessage(); });
-
-$('copyLinkBtn').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText(location.href); $('copyLinkBtn').textContent = 'Copied!'; }
-  catch { $('copyLinkBtn').textContent = 'The link is in the address bar'; }
-  setTimeout(() => $('copyLinkBtn').textContent = 'Copy invite link', 2000);
-});
-
-// ---------- SC64 via Web Serial ----------
-let port = null, reader = null, writer = null, rxBuf = new Uint8Array(0);
-let rxTotal = 0, rxFirst = new Uint8Array(0); // diagnostics: how much came back at all?
-const pending = []; // {id, resolve, reject, timer}
-
-function u32(v) { return [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]; }
-function readU32(b, o) { return ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0; }
-
-async function sendCmd(id, arg0 = 0, arg1 = 0, data = null, expectResponse = true, timeoutMs = 15000) {
-  if (!writer) throw new Error('SC64 not connected');
-  const len = data ? data.length : 0;
-  const pkt = new Uint8Array(12 + len);
-  pkt.set(enc.encode('CMD'), 0); pkt[3] = id.charCodeAt(0);
-  pkt.set(u32(arg0), 4); pkt.set(u32(arg1), 8);
-  if (data) pkt.set(data, 12);
-  let p = null;
-  if (expectResponse) {
-    p = new Promise((resolve, reject) => {
-      const entry = { id, resolve, reject };
-      entry.timer = setTimeout(() => {
-        pending.splice(pending.indexOf(entry), 1);
-        reject(new Error(`Timeout on command '${id}' (${rxTotal} bytes received so far${rxTotal ? ': ' + hex(rxFirst) : ''})`));
-      }, timeoutMs);
-      pending.push(entry);
-    });
-  }
-  await writer.write(pkt);
-  return p;
-}
-
-function handlePacket(kind, id, data) {
-  if (kind === 'CMP' || kind === 'RSP' || kind === 'ERR') {
-    const idx = pending.findIndex(e => e.id === id);
-    if (idx < 0) return;
-    const [e] = pending.splice(idx, 1);
-    clearTimeout(e.timer);
-    kind !== 'ERR' ? e.resolve(data) : e.reject(new Error(`SC64 reported an error for command '${id}'`));
-    return;
-  }
-  // Asynchronous packets
-  if (id === 'U' && data.length >= 4) {           // data from the N64 (USB_WRITE on the N64 side)
-    const type = data[0];
-    const len = (data[1] << 16) | (data[2] << 8) | data[3];
-    const payload = data.slice(4, 4 + len);
-    if (type === 1) {                              // type 1 = text: post as a chat message to the room
-      const text = dec.decode(payload).slice(0, 2000);
-      log('chatLog', `<b>You (N64):</b> ${esc(text)}`);
-      if (sendChat) sendChat('[N64] ' + text);
-      else bridge('<span class="muted">N64 message not sent: not in a room yet.</span>');
-    } else {
-      bridge(`N64 → Internet: ${payload.length} bytes (type ${type}) <span class="muted">${hex(payload)}</span>`);
-      if (sendN64) sendN64(payload);
+    const frames = []; let size = 0;
+    while (outQueue.length && size + 2 + outQueue[0].length <= 2048) {
+      const m = outQueue.shift();
+      frames.push(Uint8Array.of(m.length >> 8, m.length & 255), m); size += 2 + m.length;
     }
-  } else if (id === 'I') {
-    bridge(`<span class="muted">IS-Viewer:</span> ${esc(dec.decode(data))}`);
-  } else if (id === 'G') {
-    bridge('<span class="err">The N64 did not pick up the data in time (discarded).</span>');
-  } else if (id === 'B') {
-    bridge('SC64 button pressed.');
-  }
+    if (!frames.length) { outQueue.shift(); return; }                    // single message too large: drop it
+    const out = new Uint8Array(size); let o = 0;
+    for (const f of frames) { out.set(f, o); o += f.length; }
+    await sc64.usbWrite(USB_TYPE, out);
+  } catch (e) { log(`USB write failed: ${e.message}`, 'err'); }
+  finally { flushBusy = false; }
+}, 40);
+let flushBusy = false;
+
+// ---------- Trystero ----------
+const TRYSTERO_URL = 'https://cdn.jsdelivr.net/npm/trystero@0.27.0/+esm';   // pinned: the API changes between versions
+let joinRoom = null;
+import(TRYSTERO_URL).then(m => { joinRoom = m.joinRoom; setStatus('stNet', 'on', 'ready'); log('Trystero loaded.'); updateStatus(); })
+  .catch(e => { setStatus('stNet', 'off', 'could not load'); log(`Could not load Trystero: ${e.message}`, 'err'); });
+const APP_ID = 'sc64-netplay';
+
+// ---------- session state ----------
+let app = null, playerName = 'Player', helloAt = 0;
+let dir = null;                 // { room, announce }
+const lobbies = new Map();      // id → { id, name, host, players, max, open, info, seen }
+let lastListJson = '', lastListSent = 0, listTimer = null;
+let lobby = null;               // { id, room, isHost, name, max, info, open, joined, hostPeer, slots: [peerId|null x8], names: Map, timer, actions }
+
+function flags() { return (joinRoom ? 1 : 0) | (dir ? 2 : 0) | (lobby?.joined ? 4 : 0) | (lobby?.isHost ? 8 : 0); }
+function sendStatus() { toN64(msg(STATUS).u8(VERSION).u8(flags()).u8(Math.min(255, dir ? Object.keys(dir.room.getPeers()).length : 0)).build()); }
+setInterval(() => { if (app && sc64.connected) sendStatus(); }, 2000);
+
+function updateStatus() {
+  if (!app) setStatus('stN64', sc64.connected ? 'wait' : 'off', sc64.connected ? 'waiting for a netplay ROM' : 'not talking yet');
+  else setStatus('stN64', 'on', `${app} · ${playerName}`);
+  if (lobby?.joined) setStatus('stLobby', 'on', `${lobby.name}${lobby.isHost ? ' (host)' : ''} · ${1 + lobby.slots.filter(Boolean).length}/${lobby.max}`);
+  else if (lobby) setStatus('stLobby', 'wait', 'joining…');
+  else if (dir) setStatus('stLobby', 'wait', `browsing · ${lobbies.size} lobbies`);
+  else setStatus('stLobby', 'off', '–');
 }
 
-function parseRx() {
-  while (rxBuf.length >= 8) {
-    const kind = dec.decode(rxBuf.slice(0, 3));
-    if (kind !== 'CMP' && kind !== 'RSP' && kind !== 'ERR' && kind !== 'PKT') { rxBuf = rxBuf.slice(1); continue; } // resynchronize
-    const len = readU32(rxBuf, 4);
-    if (rxBuf.length < 8 + len) return;
-    const id = String.fromCharCode(rxBuf[3]);
-    const data = rxBuf.slice(8, 8 + len);
-    rxBuf = rxBuf.slice(8 + len);
-    handlePacket(kind, id, data);
-  }
+function ensureNet() {
+  if (!joinRoom) { toN64(msg(ERROR).str('Modem: internet library not loaded yet').build()); return false; }
+  if (!app) { toN64(msg(ERROR).str('Modem: send HELLO first').build()); return false; }
+  return true;
 }
 
-async function readLoop() {
-  try {
-    while (port?.readable) {
-      reader = port.readable.getReader();
-      try {
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (rxTotal < 32) { const m = new Uint8Array(rxFirst.length + value.length); m.set(rxFirst); m.set(value, rxFirst.length); rxFirst = m.slice(0, 32); }
-          rxTotal += value.length;
-          const merged = new Uint8Array(rxBuf.length + value.length);
-          merged.set(rxBuf); merged.set(value, rxBuf.length);
-          rxBuf = merged; parseRx();
-        }
-      } finally { reader.releaseLock(); }
-    }
-  } catch (e) {
-    bridge(`<span class="err">Read error: ${esc(e.message)}</span>`);
-  }
-}
-
-async function waitDsr(target, ms = 1000) {
-  const t0 = performance.now();
-  while (performance.now() - t0 < ms) {
-    try {
-      const s = await port.getSignals();
-      if (s.dataSetReady === target) return 'ok';
-    } catch (e) { return 'error: ' + e.message; }
-    await new Promise(r => setTimeout(r, 10));
-  }
-  return 'timeout';
-}
-
-async function resetComm() {
-  // Per the SC64 docs: DTR=1 → wait for DSR=1 → flush buffers → DTR=0 → wait for DSR=0.
-  // Important: DTR must end up at 0 no matter what, otherwise the SC64 USB interface stays disabled.
-  const steps = [];
-  try { await port.setSignals({ dataTerminalReady: true }); steps.push('DTR=1 ok'); }
-  catch (e) { steps.push('DTR=1 error: ' + e.message); }
-  steps.push('DSR→1 ' + await waitDsr(true));
-  rxBuf = new Uint8Array(0);
-  try { await port.setSignals({ dataTerminalReady: false }); steps.push('DTR=0 ok'); }
-  catch (e) { steps.push('DTR=0 error: ' + e.message); }
-  steps.push('DSR→0 ' + await waitDsr(false));
-  bridge(`<span class="muted">Reset: ${esc(steps.join(', '))}</span>`);
-}
-
-// ---------- FTDI via WebUSB (for Android, where Web Serial does not list FTDI chips) ----------
-// Emulates the parts of the Web Serial port interface that this page uses.
-class FtdiUsbPort {
-  constructor(device) { this.device = device; this.readable = null; this.writable = null; this.index = 1; }
-  async ctrl(request, value) {
-    const r = await this.device.controlTransferOut({ requestType: 'vendor', recipient: 'device', request, value, index: this.index });
-    if (r.status !== 'ok') throw new Error(`FTDI control request ${request} failed`);
-  }
-  async open() {
-    const d = this.device;
-    await d.open();
-    if (d.configuration === null) await d.selectConfiguration(1);
-    const iface = d.configuration.interfaces[0];
-    await d.claimInterface(iface.interfaceNumber);
-    const eps = iface.alternate.endpoints;
-    const epIn = eps.find(e => e.direction === 'in' && e.type === 'bulk');
-    const epOut = eps.find(e => e.direction === 'out' && e.type === 'bulk');
-    if (!epIn || !epOut) throw new Error('No suitable USB endpoints found');
-    this.epIn = epIn.endpointNumber; this.epOut = epOut.endpointNumber; this.pkt = epIn.packetSize || 512;
-    await this.ctrl(0, 0);          // Reset
-    await this.ctrl(0, 1);          // purge RX buffer
-    await this.ctrl(0, 2);          // purge TX buffer
-    await this.ctrl(9, 16);         // latency timer 16 ms: fewer empty status packets, less CPU load on the phone
-    await this.ctrl(2, 0);          // no flow control
-    const self = this;
-    this.readable = new ReadableStream({
-      async pull(controller) {
-        for (;;) {
-          let r;
-          try { r = await d.transferIn(self.epIn, self.pkt * 32); }
-          catch (e) { self.readable = null; controller.error(e); return; }
-          const b = new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
-          // every USB packet starts with 2 FTDI status bytes – strip them
-          const parts = [];
-          for (let off = 0; off < b.length; off += self.pkt) {
-            const end = Math.min(off + self.pkt, b.length);
-            if (end - off > 2) parts.push(b.slice(off + 2, end));
-          }
-          if (parts.length) {
-            const total = parts.reduce((n, p) => n + p.length, 0);
-            const out = new Uint8Array(total); let o = 0;
-            for (const p of parts) { out.set(p, o); o += p.length; }
-            controller.enqueue(out); return;
-          }
-        }
-      },
-      cancel() { self.readable = null; }
+// ---------- directory: every host announces its lobby, everyone listens ----------
+function joinDirectory() {
+  if (dir) return;
+  const room = joinRoom({ appId: APP_ID }, `${app}/directory`);
+  const announce = room.makeAction('announce');
+  dir = { room, announce };
+  announce.onMessage((a, { peerId }) => {
+    if (!a || typeof a.id !== 'string') return;
+    if (a.gone) { lobbies.delete(a.id); scheduleList(); return; }
+    lobbies.set(a.id, {
+      id: a.id.slice(0, 16), name: String(a.name ?? '').slice(0, 32), host: String(a.host ?? '').slice(0, 24),
+      players: a.players | 0, max: a.max | 0, open: a.open ? 1 : 0, info: String(a.info ?? '').slice(0, 40), seen: Date.now(), peerId,
     });
-    this.writable = new WritableStream({
-      async write(chunk) {
-        for (let off = 0; off < chunk.length; off += 65536) {
-          const r = await d.transferOut(self.epOut, chunk.subarray(off, Math.min(off + 65536, chunk.length)));
-          if (r.status !== 'ok') throw new Error('USB write error');
-        }
+    scheduleList();
+  });
+  room.onPeerJoin(({ peerId }) => { if (lobby?.isHost) announceLobby(peerId); });
+  room.onPeerLeave(({ peerId }) => {           // a host vanished from the directory → drop its lobby
+    for (const [id, l] of lobbies) if (l.peerId === peerId) lobbies.delete(id);
+    scheduleList();
+  });
+  room.onError?.(e => log(`Directory error: ${e?.message || e}`, 'err'));
+  log(`Joined the ${app} lobby directory.`);
+  updateStatus();
+}
+function leaveDirectory() { if (!dir) return; const d = dir; dir = null; lobbies.clear(); d.room.leave().catch(() => {}); }
+
+function announceLobby(target) {
+  if (!dir || !lobby?.isHost) return;
+  const a = { id: lobby.id, name: lobby.name, host: playerName, players: 1 + lobby.slots.filter(Boolean).length, max: lobby.max, open: lobby.open, info: lobby.info };
+  dir.announce.send(a, target ? { target } : undefined).catch(() => {});
+}
+setInterval(() => {
+  announceLobby();
+  const now = Date.now();
+  for (const [id, l] of lobbies) if (now - l.seen > 6000) lobbies.delete(id);
+  scheduleList();
+}, 2000);
+
+function scheduleList() {
+  updateStatus();
+  if (!dir) return;
+  const list = [...lobbies.values()].filter(l => l.id !== lobby?.id).sort((a, b) => (b.open - a.open) || a.name.localeCompare(b.name)).slice(0, 12);
+  const json = JSON.stringify(list.map(({ seen, peerId, ...l }) => l));
+  if (json === lastListJson) return;
+  const wait = Math.max(0, 1000 - (Date.now() - lastListSent));
+  clearTimeout(listTimer);
+  listTimer = setTimeout(() => {
+    lastListJson = json; lastListSent = Date.now();
+    const b = msg(LOBBY_LIST).u8(list.length);
+    for (const l of list) b.str(l.id).str(l.name).str(l.host).u8(l.players).u8(l.max).u8(l.open).str(l.info);
+    toN64(b.build());
+  }, wait);
+}
+
+// ---------- lobby rooms ----------
+function slotOf(peerId) { return lobby ? lobby.slots.indexOf(peerId) : -1; }
+function freeSlot() { for (let i = 1; i < 8; i++) if (!lobby.slots[i]) return i; return -1; }
+
+function enterLobby({ id, isHost, name = '', max = 8, info = '' }) {
+  leaveLobby(null);
+  const room = joinRoom({ appId: APP_ID }, `${app}/lobby/${id}`);
+  const hello = room.makeAction('hello'), data = room.makeAction('data'), kick = room.makeAction('kick');
+  lobby = { id, room, isHost, name, max, info, open: 1, joined: false, hostPeer: null, slots: new Array(8).fill(null), names: new Map(), actions: { hello, data, kick } };
+  const me = lobby;
+
+  const sayHello = (target) => hello.send({ name: playerName, host: me.isHost, lobby: me.isHost ? { name: me.name, max: me.max, info: me.info } : undefined }, target ? { target } : undefined).catch(() => {});
+
+  room.onPeerJoin(({ peerId }) => {
+    if (lobby !== me) return;
+    if (me.isHost && 1 + me.slots.filter(Boolean).length >= me.max) { kick.send({ reason: 'full' }, { target: peerId }).catch(() => {}); return; }
+    sayHello(peerId);
+  });
+  room.onPeerLeave(({ peerId }) => {
+    if (lobby !== me) return;
+    const s = slotOf(peerId);
+    if (s > 0) { me.slots[s] = null; toN64(msg(PLAYER_LEFT).u8(s).build()); log(`${me.names.get(peerId) || 'A player'} left the lobby.`); }
+    me.names.delete(peerId);
+    if (peerId === me.hostPeer) { log('The host left the lobby.', 'err'); leaveLobby(LEFT_HOST_GONE); return; }
+    if (me.isHost) announceLobby();
+    updateStatus();
+  });
+  hello.onMessage((h, { peerId }) => {
+    if (lobby !== me || !h) return;
+    const pname = String(h.name ?? 'Player').slice(0, 24);
+    me.names.set(peerId, pname);
+    if (h.host && !me.isHost) {
+      me.hostPeer = peerId;
+      if (h.lobby) { me.name = String(h.lobby.name ?? me.name).slice(0, 32); me.max = h.lobby.max | 0 || 8; me.info = String(h.lobby.info ?? '').slice(0, 40); }
+    }
+    let s = slotOf(peerId), isNew = false;
+    if (s < 0) { s = freeSlot(); if (s < 0) return; me.slots[s] = peerId; isNew = true; }
+    if (!me.joined && me.hostPeer) {                       // joiner: the host's hello completes the join
+      me.joined = true; clearTimeout(me.timer);
+      toN64(msg(JOINED).u8(0).str(me.id).str(me.name).u8(me.max).str(me.info).build());
+      log(`Joined lobby “${me.name}”.`, 'ok');
+      for (let i = 1; i < 8; i++) if (me.slots[i]) toN64(msg(PLAYER_JOINED).u8(i).u8(me.slots[i] === me.hostPeer ? 1 : 0).str(me.names.get(me.slots[i]) || 'Player').build());
+    } else if (me.joined) {
+      toN64(msg(PLAYER_JOINED).u8(s).u8(peerId === me.hostPeer ? 1 : 0).str(pname).build());
+      if (isNew) log(`${pname} joined the lobby.`);
+    }
+    if (me.isHost) announceLobby();
+    updateStatus();
+  });
+  kick.onMessage((k, { peerId }) => { if (lobby === me && !me.isHost && k?.reason === 'full') { log('That lobby is full.', 'err'); leaveLobby(LEFT_FULL); } });
+  data.onMessage(async (d, { peerId }) => {
+    if (lobby !== me || !me.joined) return;
+    const s = slotOf(peerId); if (s < 1) return;
+    if (typeof Blob !== 'undefined' && d instanceof Blob) d = await d.arrayBuffer();
+    const u8 = d instanceof ArrayBuffer ? new Uint8Array(d) : ArrayBuffer.isView(d) ? new Uint8Array(d.buffer, d.byteOffset, d.byteLength) : new Uint8Array(0);
+    if (!u8.length) return;
+    toN64(msg(DATA).u8(s).u8(u8[0]).bytes(u8.subarray(1)).build());
+  });
+  room.onError?.(e => log(`Lobby error: ${e?.message || e}`, 'err'));
+
+  if (isHost) {
+    me.joined = true;
+    toN64(msg(JOINED).u8(1).str(id).str(name).u8(max).str(info).build());
+    log(`Created lobby “${name}” (${id}).`, 'ok');
+    joinDirectory(); announceLobby();
+  } else {
+    me.timer = setTimeout(() => { if (lobby === me && !me.joined) { log('Lobby not found (no host answered).', 'err'); leaveLobby(LEFT_NOT_FOUND); } }, 12000);
+  }
+  updateStatus();
+}
+
+function leaveLobby(reason) {
+  if (!lobby) return;
+  const l = lobby; lobby = null;
+  clearTimeout(l.timer);
+  if (l.isHost && dir) dir.announce.send({ id: l.id, gone: true }).catch(() => {});
+  l.room.leave().catch(() => {});
+  if (reason !== null) toN64(msg(LEFT).u8(reason).build());
+  lastListJson = ''; scheduleList();
+  updateStatus();
+}
+
+// ---------- messages from the N64 ----------
+function onN64Message(u8) {
+  const r = reader(u8), type = r.u8();
+  switch (type) {
+    case HELLO: {
+      const version = r.u8(); const newApp = r.str().replace(/[^a-z0-9_-]/gi, '').slice(0, 24) || 'game'; playerName = r.str().slice(0, 24) || 'Player';
+      if (version !== VERSION) log(`N64 speaks protocol version ${version}, modem speaks ${VERSION}.`, 'err');
+      if (newApp !== app || Date.now() - helloAt > 3000) {       // a (re)started ROM: fresh session (repeats within 3 s are retries)
+        leaveLobby(null); if (newApp !== app) leaveDirectory();
+        log(`N64 says hello: game “${newApp}”, player “${playerName}”.`, 'ok');
       }
-    });
-  }
-  async setSignals({ dataTerminalReady }) { await this.ctrl(1, dataTerminalReady ? 0x0101 : 0x0100); }
-  async getSignals() {
-    const r = await this.device.controlTransferIn({ requestType: 'vendor', recipient: 'device', request: 5, value: 0, index: this.index }, 2);
-    return { dataSetReady: !!(r.data.getUint8(0) & 0x20) };
-  }
-  async close() { this.readable = null; try { await this.device.close(); } catch {} }
-}
-
-async function connectSc64(getPort) {
-  try {
-    port = await getPort();
-    rxTotal = 0; rxFirst = new Uint8Array(0);
-    await port.open({ baudRate: 115200, bufferSize: 1 << 20 });
-    await resetComm();
-    writer = port.writable.getWriter();
-    readLoop();
-    const ident = dec.decode(await sendCmd('v', 0, 0, null, true, 3000));
-    if (ident !== 'SCv2') throw new Error(`Unexpected identifier “${ident}” – is this really an SC64?`);
-    const v = await sendCmd('V');
-    const major = (v[0] << 8) | v[1], minor = (v[2] << 8) | v[3], rev = readU32(v, 4);
-    $('sc64Status').innerHTML = `<span class="ok">Connected: SC64, firmware ${major}.${minor}.${rev}</span>`;
-    $('uploadBtn').disabled = false; $('chatRomBtn').disabled = false; $('sc64DisconnectBtn').disabled = false; $('sc64ConnectBtn').disabled = true; $('sc64UsbBtn').disabled = true;
-    bridge('SC64 connected. Data from the N64 is now forwarded to the room.');
-  } catch (e) {
-    let msg = e.message;
-    if (e.name === 'NotFoundError') msg = 'No device selected. If the list was empty: check the USB OTG cable, and on Android use the WebUSB button.';
-    if (e.name === 'SecurityError' || /claim/i.test(msg)) msg += ' – a system driver may be holding the device (on a PC, use the Web Serial button).';
-    $('sc64Status').innerHTML = `<span class="err">${esc(msg)}</span>`;
-    await disconnect();
-  }
-}
-
-$('sc64ConnectBtn').addEventListener('click', () => connectSc64(() => navigator.serial.requestPort()));
-$('sc64UsbBtn').addEventListener('click', () => connectSc64(async () =>
-  new FtdiUsbPort(await navigator.usb.requestDevice({ filters: [{ vendorId: 0x0403 }] }))
-));
-
-async function disconnect() {
-  try { await reader?.cancel(); } catch {}
-  try { writer?.releaseLock(); } catch {}
-  try { await port?.close(); } catch {}
-  port = reader = writer = null;
-  pending.splice(0).forEach(e => { clearTimeout(e.timer); e.reject(new Error('Disconnected')); });
-  $('uploadBtn').disabled = true; $('chatRomBtn').disabled = true; $('sc64DisconnectBtn').disabled = true; $('sc64ConnectBtn').disabled = false; $('sc64UsbBtn').disabled = false;
-}
-$('sc64DisconnectBtn').addEventListener('click', async () => { await disconnect(); $('sc64Status').textContent = 'Not connected.'; });
-
-// Detect ROM byte order and convert to big-endian (.z64)
-function toZ64(rom) {
-  const m = readU32(rom, 0);
-  if (m === 0x80371240) return { data: rom, fmt: '.z64 (as is)' };
-  const out = new Uint8Array(rom.length);
-  if (m === 0x37804012) { for (let i = 0; i + 1 < rom.length; i += 2) { out[i] = rom[i + 1]; out[i + 1] = rom[i]; } return { data: out, fmt: '.v64 → swapped' }; }
-  if (m === 0x40123780) { for (let i = 0; i + 3 < rom.length; i += 4) { out[i] = rom[i + 3]; out[i + 1] = rom[i + 2]; out[i + 2] = rom[i + 1]; out[i + 3] = rom[i]; } return { data: out, fmt: '.n64 → swapped' }; }
-  return { data: rom, fmt: 'unknown (unchanged)' };
-}
-
-$('uploadBtn').addEventListener('click', async () => {
-  const file = $('romFile').files[0];
-  if (!file) { $('sc64Status').innerHTML = '<span class="err">Please choose a ROM file first.</span>'; return; }
-  if (file.size > 64 * 1024 * 1024) { $('sc64Status').innerHTML = '<span class="err">ROM is larger than 64 MiB.</span>'; return; }
-  await uploadRom(new Uint8Array(await file.arrayBuffer()), file.name, Number($('saveType').value));
-});
-
-async function uploadRom(bytes, name, saveType) {
-  const btns = [$('uploadBtn'), $('chatRomBtn')], prog = $('uploadProgress');
-  btns.forEach(b => b.disabled = true); prog.hidden = false; prog.value = 0;
-  try {
-    const { data, fmt } = toZ64(bytes);
-    bridge(`ROM “${esc(name)}”: ${(data.length / 1048576).toFixed(2)} MiB, format ${fmt}`);
-    await sendCmd('R');                                   // STATE_RESET
-    await sendCmd('C', 5, 1);                             // BOOT_MODE = ROM (via bootloader, automatic CIC)
-    await sendCmd('C', 6, saveType);                      // SAVE_TYPE
-    const CHUNK = 1 << 20; const t0 = performance.now();
-    for (let off = 0; off < data.length; off += CHUNK) {
-      const part = data.subarray(off, Math.min(off + CHUNK, data.length));
-      await sendCmd('M', off, part.length, part, true, 30000); // MEMORY_WRITE into SDRAM at 0x0
-      prog.value = (off + part.length) / data.length;
+      app = newApp; helloAt = Date.now();
+      sendStatus(); updateStatus();
+      break;
     }
-    const secs = (performance.now() - t0) / 1000;
-    $('sc64Status').innerHTML = `<span class="ok">ROM uploaded (${secs.toFixed(1)} s). Now power on or reset the N64.</span>`;
-  } catch (e) {
-    $('sc64Status').innerHTML = `<span class="err">Upload failed: ${esc(e.message)}</span>`;
-  } finally { btns.forEach(b => b.disabled = !writer); }
-}
-
-// ---------- Bridge: Internet → N64 ----------
-// The SC64 only holds one transfer for the N64 until the N64 picks it up (it polls once per frame).
-// So USB_WRITEs are sent one after another with a short gap.
-const usbQueue = []; let usbBusy = false;
-function usbSend(type, bytes) {
-  if (!writer) return;
-  usbQueue.push({ type, bytes });
-  if (!usbBusy) drainUsb();
-}
-async function drainUsb() {
-  usbBusy = true;
-  while (usbQueue.length && writer) {
-    const { type, bytes } = usbQueue.shift();
-    try { await sendCmd('U', type, bytes.length, bytes, false); }
-    catch (e) { bridge(`<span class="err">Forwarding to the SC64 failed: ${esc(e.message)}</span>`); }
-    await new Promise(r => setTimeout(r, 150));
+    case BROWSE:
+      if (!ensureNet()) return;
+      joinDirectory(); lastListJson = ''; scheduleList(); sendStatus();
+      break;
+    case CREATE: {
+      if (!ensureNet()) return;
+      const max = Math.min(8, Math.max(2, r.u8())); const name = r.str().slice(0, 32) || `${playerName}'s lobby`; const info = r.str().slice(0, 40);
+      enterLobby({ id: randomId(), isHost: true, name, max, info });
+      sendStatus();
+      break;
+    }
+    case JOIN: {
+      if (!ensureNet()) return;
+      const id = r.str().slice(0, 16);
+      const known = lobbies.get(id);
+      if (known && known.players >= known.max) { toN64(msg(LEFT).u8(LEFT_FULL).build()); return; }
+      enterLobby({ id, isHost: false, name: known?.name ?? '', max: known?.max ?? 8, info: known?.info ?? '' });
+      break;
+    }
+    case LEAVE:
+      if (lobby) { log('Left the lobby.'); leaveLobby(LEFT_REQUESTED); } else toN64(msg(LEFT).u8(LEFT_REQUESTED).build());
+      sendStatus();
+      break;
+    case SEND: {
+      const target = r.u8(), channel = r.u8(), payload = r.rest();
+      if (!lobby?.joined || payload.length > 1024) return;
+      const packet = new Uint8Array(1 + payload.length); packet[0] = channel; packet.set(payload, 1);
+      const peerId = target === 0xFF ? null : lobby.slots[target];
+      if (target !== 0xFF && !peerId) return;
+      lobby.actions.data.send(packet, peerId ? { target: peerId } : undefined).catch(() => {});
+      break;
+    }
+    case SET_INFO: {
+      const open = r.u8(), info = r.str().slice(0, 40);
+      if (lobby?.isHost) { lobby.open = open ? 1 : 0; lobby.info = info; announceLobby(); }
+      break;
+    }
+    default:
+      log(`Unknown message 0x${type.toString(16)} from N64`, 'err');
   }
-  usbBusy = false;
-}
-function chatToN64(line) {
-  if (writer && $('chatToN64').checked) usbSend(1, enc.encode(line.slice(0, 400)));   // type 1 = text
 }
 
-$('chatRomBtn').addEventListener('click', async () => {
+// ---------- connecting the SC64 ----------
+let wakeLock = null;
+async function keepAwake() {
+  if (!('wakeLock' in navigator) || !sc64.connected || document.visibilityState !== 'visible' || (wakeLock && !wakeLock.released)) return;
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+}
+document.addEventListener('visibilitychange', keepAwake);
+
+async function connectWith(getPort, kind) {
+  if (sc64.connected || connecting) return;
+  connecting = true;
+  setStatus('stSc64', 'wait', 'connecting…');
   try {
-    const res = await fetch('chat.z64', { cache: 'no-store' });
-    if (!res.ok) throw new Error('chat.z64 not found – is the ROM still being built?');
-    await uploadRom(new Uint8Array(await res.arrayBuffer()), 'N64 Chat', 0);
-  } catch (e) { $('sc64Status').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
-});
+    const port = await getPort();
+    const fw = await sc64.connect(port);
+    setStatus('stSc64', 'on', `firmware ${fw}`);
+    log(`SC64 connected via ${kind} (firmware ${fw}).`, 'ok');
+    $('connectButtons').hidden = true; $('hint').textContent = 'Connected. You can put the phone aside – keep this page open.';
+    $('lobbyRomBtn').disabled = false;
+    keepAwake(); updateStatus();
+  } catch (e) {
+    let m = e.message;
+    if (e.name === 'NotFoundError') m = 'No device selected. If the list was empty, check the USB OTG cable.';
+    setStatus('stSc64', 'off', 'not connected');
+    log(`Could not connect: ${m}`, 'err');
+    $('hint').textContent = m;
+  } finally { connecting = false; }
+}
+let connecting = false;
 
-async function onPeerN64Data(payload, id) {
-  const who = esc(peers.get(id)?.name || id.slice(0, 6));
-  bridge(`Internet → ${writer ? 'N64' : 'here (no SC64)'}: ${payload.length} bytes from ${who} <span class="muted">${hex(payload)}</span>`);
-  usbSend(2, payload);                               // type 2 = binary data
+function onSc64Gone() {
+  setStatus('stSc64', 'off', 'disconnected');
+  log('SC64 disconnected.', 'err');
+  $('connectButtons').hidden = false; $('lobbyRomBtn').disabled = true;
+  $('hint').textContent = 'The SC64 was disconnected. Plug it back in – the page reconnects by itself.';
+  outQueue = []; app = null;
+  if (lobby) leaveLobby(null);
+  leaveDirectory();
+  wakeLock?.release().catch(() => {}); wakeLock = null;
+  updateStatus();
 }
 
-$('testDataBtn').addEventListener('click', () => {
-  const payload = crypto.getRandomValues(new Uint8Array(16));
-  sendN64?.(payload);
-  bridge(`Test data sent: <span class="muted">${hex(payload)}</span>`);
+async function autoConnect() {
+  if (sc64.connected || connecting) return;
+  const ports = await grantedPorts();
+  const pick = ports.find(p => p.kind === 'usb') || ports[0];      // on Android only USB works
+  if (pick) connectWith(async () => pick.port, pick.kind === 'usb' ? 'WebUSB' : 'Web Serial');
+}
+
+if ('usb' in navigator) {
+  $('usbBtn').hidden = false;
+  $('usbBtn').addEventListener('click', () => connectWith(requestUsbPort, 'WebUSB'));
+  navigator.usb.addEventListener('connect', () => setTimeout(autoConnect, 500));
+}
+if ('serial' in navigator) {
+  $('serialBtn').hidden = false;
+  $('serialBtn').addEventListener('click', () => connectWith(requestSerialPort, 'Web Serial'));
+  navigator.serial.addEventListener('connect', () => setTimeout(autoConnect, 500));
+}
+// On desktop, Web Serial is the reliable path (the OS driver usually holds the device for WebUSB).
+if ('serial' in navigator && !/Android/i.test(navigator.userAgent)) { $('connectButtons').prepend($('serialBtn')); $('serialBtn').className = 'primary'; $('usbBtn').className = ''; }
+if (!('usb' in navigator) && !('serial' in navigator)) $('hint').innerHTML = '<span class="err">This browser cannot talk to USB devices. Use Chrome or Edge (Android or desktop), or Firefox 151+ on desktop.</span>';
+if (!window.isSecureContext) $('hint').innerHTML = '<span class="err">Open this page via https:// or http://localhost – USB access is blocked otherwise.</span>';
+autoConnect();
+
+$('lobbyRomBtn').addEventListener('click', async () => {
+  const btn = $('lobbyRomBtn'), prog = $('progress');
+  btn.disabled = true; prog.hidden = false; prog.value = 0;
+  try {
+    const res = await fetch('lobby.z64', { cache: 'no-store' });
+    if (!res.ok) throw new Error('lobby.z64 not found – is the ROM still being built?');
+    const { size } = await sc64.uploadRom(new Uint8Array(await res.arrayBuffer()), 1 /* EEPROM 4 kbit for the player name */, p => prog.value = p);
+    log(`Lobby demo ROM uploaded (${(size / 1024).toFixed(0)} KiB). Reset the N64.`, 'ok');
+    app = null; updateStatus();
+  } catch (e) { log(`Upload failed: ${e.message}`, 'err'); }
+  finally { btn.disabled = !sc64.connected; prog.hidden = true; }
 });
-$('clearLogBtn').addEventListener('click', () => $('bridgeLog').innerHTML = '');
+updateStatus();
 </script>
 </body>
 </html>

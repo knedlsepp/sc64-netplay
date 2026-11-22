@@ -1,10 +1,11 @@
-name: Build chat ROM
+name: Build ROMs
 
 on:
   push:
     branches: [main]
     paths:
       - 'rom/**'
+      - 'rom-lobby/**'
       - '.github/workflows/build-rom.yml'
   workflow_dispatch:
 
@@ -31,24 +32,27 @@ jobs:
           cd "$RUNNER_TEMP/libdragon"
           sudo env "PATH=$PATH" "N64_INST=$N64_INST" ./build.sh
 
-      - name: Build the ROM
-        run: make -C rom
+      - name: Build the ROMs
+        run: make -C rom && make -C rom-lobby
 
-      - name: Attach the ROM as a download
+      - name: Attach the ROMs as a download
         uses: actions/upload-artifact@v4
         with:
-          name: chat-rom
-          path: rom/chat.z64
+          name: roms
+          path: |
+            rom/chat.z64
+            rom-lobby/lobby.z64
 
-      - name: Put the ROM next to the web page (for GitHub Pages)
+      - name: Put the ROMs next to the web page (for GitHub Pages)
         run: |
           cp rom/chat.z64 chat.z64
+          cp rom-lobby/lobby.z64 lobby.z64
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add chat.z64
+          git add chat.z64 lobby.z64
           if git diff --cached --quiet; then
             echo "ROM unchanged."
           else
-            git commit -m "Rebuild chat ROM"
+            git commit -m "Rebuild ROMs"
             git push
           fi

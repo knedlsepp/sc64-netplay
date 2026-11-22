@@ -106,7 +106,6 @@
             src = ./rom;
 
             dontConfigure = true;
-            makeFlags = [ "N64_INST=${libdragon-sdk}" ];
             env.N64_INST = "${libdragon-sdk}";
 
             installPhase = ''
@@ -121,11 +120,34 @@
             meta.description = "N64 chat ROM for the SummerCart64";
           };
 
-          # The static web page as served on GitHub Pages – with a freshly built chat ROM
+          lobby-rom = stdenv.mkDerivation {
+            pname = "n64-lobby-demo-rom";
+            version = "0.1.0";
+            src = ./rom-lobby;
+
+            dontConfigure = true;
+            env.N64_INST = "${libdragon-sdk}";
+
+            installPhase = ''
+              runHook preInstall
+              install -Dm644 lobby.z64 $out/lobby.z64
+              runHook postInstall
+            '';
+
+            dontStrip = true;
+            dontFixup = true;
+
+            meta.description = "N64 lobby demo ROM: online lobbies driven from the console";
+          };
+
+          # The static web page as served on GitHub Pages – with freshly built ROMs
           web = pkgs.runCommand "sc64-netplay-web" { } ''
             mkdir -p $out
             cp ${./index.html} $out/index.html
+            cp ${./test.html} $out/test.html
+            cp ${./sc64.js} $out/sc64.js
             cp ${chat-rom}/chat.z64 $out/chat.z64
+            cp ${lobby-rom}/lobby.z64 $out/lobby.z64
             touch $out/.nojekyll
           '';
 
@@ -141,7 +163,7 @@
           };
         in
         {
-          inherit n64-toolchain chat-rom web serve;
+          inherit n64-toolchain chat-rom lobby-rom web serve;
           libdragon = libdragon-sdk;
           default = web;
         });
@@ -165,7 +187,7 @@
       });
 
       checks = forAllSystems (system: pkgs: {
-        inherit (self.packages.${system}) chat-rom web;
+        inherit (self.packages.${system}) chat-rom lobby-rom web;
       });
     };
 }

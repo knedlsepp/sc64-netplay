@@ -2,3 +2,5 @@ rom/build/
 rom/*.z64
 result
 result-*
+rom-lobby/build/
+rom-lobby/*.z64
