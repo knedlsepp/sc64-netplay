@@ -39,7 +39,7 @@
 <body>
 <main>
   <header>
-    <h1>N64 Netplay – Testseite <span class="muted" style="font-size:14px;font-weight:400">Version 3</span></h1>
+    <h1>N64 Netplay – Testseite <span class="muted" style="font-size:14px;font-weight:400">Version 4</span></h1>
     <p class="sub">Statische Seite: Browser finden sich über Trystero (Nostr), reden direkt per WebRTC und sprechen das SummerCart64 über Web Serial an.</p>
   </header>
 
@@ -279,12 +279,12 @@ async function sendCmd(id, arg0 = 0, arg1 = 0, data = null, expectResponse = tru
 }
 
 function handlePacket(kind, id, data) {
-  if (kind === 'RSP' || kind === 'ERR') {
+  if (kind === 'CMP' || kind === 'RSP' || kind === 'ERR') {
     const idx = pending.findIndex(e => e.id === id);
     if (idx < 0) return;
     const [e] = pending.splice(idx, 1);
     clearTimeout(e.timer);
-    kind === 'RSP' ? e.resolve(data) : e.reject(new Error(`SC64 meldet Fehler bei Befehl '${id}'`));
+    kind !== 'ERR' ? e.resolve(data) : e.reject(new Error(`SC64 meldet Fehler bei Befehl '${id}'`));
     return;
   }
   // Asynchrone Pakete
@@ -306,7 +306,7 @@ function handlePacket(kind, id, data) {
 function parseRx() {
   while (rxBuf.length >= 8) {
     const kind = dec.decode(rxBuf.slice(0, 3));
-    if (kind !== 'RSP' && kind !== 'ERR' && kind !== 'PKT') { rxBuf = rxBuf.slice(1); continue; } // neu synchronisieren
+    if (kind !== 'CMP' && kind !== 'RSP' && kind !== 'ERR' && kind !== 'PKT') { rxBuf = rxBuf.slice(1); continue; } // neu synchronisieren
     const len = readU32(rxBuf, 4);
     if (rxBuf.length < 8 + len) return;
     const id = String.fromCharCode(rxBuf[3]);
