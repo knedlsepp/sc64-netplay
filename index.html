@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>N64 Netplay – Testseite (Trystero + SC64)</title>
+<style>
+  :root { --bg:#f6f5f1; --card:#fff; --text:#222; --muted:#6b6a65; --line:#dcdad2; --accent:#1d7f5f; --err:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1c1c1a; --card:#262624; --text:#eceae3; --muted:#a3a19a; --line:#3a3936; --accent:#4cc79a; --err:#ff8a80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; display:grid; gap:16px; }
+  h1 { font-size: 24px; margin: 0; font-weight: 600; }
+  h2 { font-size: 17px; margin: 0 0 10px; font-weight: 600; }
+  p.sub { margin: 4px 0 0; color: var(--muted); }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  input[type=text], select { padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; }
+  input[type=text] { flex:1; min-width: 160px; }
+  button { padding:8px 14px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button:disabled { opacity:.45; cursor:default; }
+  .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+  .log { height: 220px; overflow:auto; border:1px solid var(--line); border-radius:8px; padding:8px; background:var(--bg); font: 13px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+  .chat { height: 260px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .err { color: var(--err); }
+  .ok { color: var(--accent); }
+  table { width:100%; border-collapse: collapse; font-size: 14px; }
+  td, th { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); }
+  progress { width: 100%; height: 14px; }
+  .warn { border-color: var(--err); }
+  code { font-family: ui-monospace, monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>N64 Netplay – Testseite</h1>
+    <p class="sub">Statische Seite: Browser finden sich über Trystero (Nostr), reden direkt per WebRTC und sprechen das SummerCart64 über Web Serial an.</p>
+  </header>
+
+  <section id="envWarn" class="warn" hidden></section>
+
+  <!-- 1. Raum -->
+  <section>
+    <h2>1. Raum beitreten</h2>
+    <div class="row">
+      <input id="roomInput" type="text" placeholder="Raumname, z. B. n64-abend">
+      <button id="joinBtn" class="primary">Beitreten</button>
+      <button id="copyLinkBtn" disabled>Einladungslink kopieren</button>
+    </div>
+    <p class="muted" id="roomStatus">Noch nicht verbunden. Alle mit demselben Raumnamen finden sich automatisch.</p>
+  </section>
+
+  <div class="grid2">
+    <!-- 2. Chat -->
+    <section>
+      <h2>2. Chat</h2>
+      <div id="chatLog" class="log chat"></div>
+      <div class="row" style="margin-top:8px">
+        <input id="nameInput" type="text" placeholder="Dein Name" style="max-width:130px">
+        <input id="chatInput" type="text" placeholder="Nachricht…" disabled>
+        <button id="sendBtn" disabled>Senden</button>
+      </div>
+    </section>
+
+    <!-- 3. Peers -->
+    <section>
+      <h2>3. Verbundene Mitspieler</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Ping</th><th>Weg</th></tr></thead>
+        <tbody id="peerTable"><tr><td colspan="3" class="muted">Noch niemand da.</td></tr></tbody>
+      </table>
+      <p class="muted">„Weg“ zeigt, wie die Verbindung zustande kam: <b>direkt (LAN)</b>, <b>direkt (Hole Punching)</b> über STUN oder <b>Relay</b> über TURN.</p>
+    </section>
+  </div>
+
+  <!-- 4. SC64 -->
+  <section>
+    <h2>4. SummerCart64</h2>
+    <div class="row">
+      <button id="sc64ConnectBtn" class="primary">SC64 verbinden</button>
+      <button id="sc64DisconnectBtn" disabled>Trennen</button>
+      <span id="sc64Status" class="muted">Nicht verbunden.</span>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <input id="romFile" type="file" accept=".z64,.n64,.v64,.bin">
+      <select id="saveType" title="Speichertyp">
+        <option value="0">Kein Save</option>
+        <option value="1">EEPROM 4 kbit</option>
+        <option value="2">EEPROM 16 kbit</option>
+        <option value="3">SRAM 256 kbit</option>
+        <option value="4">FlashRAM 1 Mbit</option>
+        <option value="5">SRAM 768 kbit</option>
+        <option value="6">SRAM 1 Mbit</option>
+      </select>
+      <button id="uploadBtn" disabled>ROM hochladen</button>
+    </div>
+    <progress id="uploadProgress" value="0" max="1" hidden></progress>
+    <p class="muted">Nach dem Upload den N64 einschalten oder resetten. Formate .z64, .v64 und .n64 werden automatisch umgedreht.</p>
+  </section>
+
+  <!-- 5. Brücke -->
+  <section>
+    <h2>5. Brücke N64 ⇄ Internet</h2>
+    <p class="muted" style="margin-top:0">Was ein Homebrew-Spiel per <code>USB_WRITE</code> schickt, geht an alle Mitspieler. Was von ihnen kommt, landet per <code>USB_WRITE</code> auf deinem N64. Ohne N64 kannst du die Kette mit dem Testknopf prüfen.</p>
+    <div class="row">
+      <button id="testDataBtn" disabled>Testdaten an Mitspieler senden</button>
+      <button id="clearLogBtn">Log leeren</button>
+    </div>
+    <div id="bridgeLog" class="log" style="margin-top:8px"></div>
+  </section>
+
+  <p class="muted">Hinweise: Läuft in Chrome/Edge und Firefox ab 151 (Web Serial). Für Web Serial muss die Seite über <code>https://</code> oder <code>http://localhost</code> geöffnet werden. Die Trystero-Bibliothek wird von jsDelivr geladen.</p>
+</main>
+
+<script type="module">
+// ---------- Hilfen ----------
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder(), dec = new TextDecoder();
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const time = () => new Date().toLocaleTimeString('de-AT', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+const hex = (u8, max = 24) => Array.from(u8.slice(0, max), b => b.toString(16).padStart(2, '0')).join(' ') + (u8.length > max ? ' …' : '');
+
+function log(el, html) {
+  const box = $(el);
+  box.insertAdjacentHTML('beforeend', `<div><span class="muted">${time()}</span> ${html}</div>`);
+  box.scrollTop = box.scrollHeight;
+}
+const bridge = (html) => log('bridgeLog', html);
+
+// ---------- Umgebung prüfen ----------
+const warnings = [];
+if (!window.isSecureContext) warnings.push('Die Seite läuft nicht in einem sicheren Kontext. Öffne sie über https:// oder http://localhost, sonst geht Web Serial nicht.');
+if (!('serial' in navigator)) warnings.push('Dieser Browser kann kein Web Serial. Chat und Mitspieler gehen trotzdem; für das SC64 brauchst du Chrome/Edge am Desktop oder Firefox ab 151.');
+if (!('RTCPeerConnection' in window)) warnings.push('WebRTC ist hier nicht verfügbar (z. B. in einer abgeschotteten Vorschau). Öffne die Datei direkt im Browser.');
+if (warnings.length) { $('envWarn').hidden = false; $('envWarn').innerHTML = warnings.map(w => `<p class="err" style="margin:4px 0">${esc(w)}</p>`).join(''); }
+
+// ---------- Trystero laden ----------
+let joinRoom, selfId;
+try {
+  ({ joinRoom, selfId } = await import('https://cdn.jsdelivr.net/npm/trystero/+esm'));
+} catch (e) {
+  $('roomStatus').innerHTML = `<span class="err">Trystero konnte nicht geladen werden: ${esc(e.message)}</span>`;
+  $('joinBtn').disabled = true;
+}
+
+// ---------- Raum & Chat ----------
+const params = new URLSearchParams(location.search);
+$('roomInput').value = params.get('raum') || '';
+try { $('nameInput').value = localStorage.getItem('n64name') || ''; } catch {}
+if (!$('nameInput').value) $('nameInput').value = 'Spieler-' + Math.floor(Math.random() * 900 + 100);
+$('nameInput').addEventListener('change', () => { try { localStorage.setItem('n64name', $('nameInput').value); } catch {} sendHello?.(); });
+
+let room = null, sendChat, sendN64, sendName, sendHello;
+const peers = new Map(); // peerId -> {name, ping, path}
+
+function myName() { return $('nameInput').value.trim() || 'Anonym'; }
+
+function renderPeers() {
+  const tb = $('peerTable');
+  if (!peers.size) { tb.innerHTML = '<tr><td colspan="3" class="muted">Noch niemand da.</td></tr>'; return; }
+  tb.innerHTML = [...peers.entries()].map(([id, p]) =>
+    `<tr><td>${esc(p.name || id.slice(0, 6))}</td><td>${p.ping != null ? p.ping + ' ms' : '…'}</td><td>${esc(p.path || '…')}</td></tr>`
+  ).join('');
+}
+
+async function detectPath(pc) {
+  try {
+    const stats = await pc.getStats();
+    let pair;
+    stats.forEach(r => { if (r.type === 'transport' && r.selectedCandidatePairId) pair = stats.get(r.selectedCandidatePairId); });
+    if (!pair) stats.forEach(r => { if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') pair = r; });
+    if (!pair) return null;
+    const local = stats.get(pair.localCandidateId), remote = stats.get(pair.remoteCandidateId);
+    const types = [local?.candidateType, remote?.candidateType];
+    if (types.includes('relay')) return 'Relay (TURN)';
+    if (types.every(t => t === 'host')) return 'direkt (LAN)';
+    return 'direkt (Hole Punching)';
+  } catch { return null; }
+}
+
+async function refreshPeerInfo() {
+  if (!room) return;
+  const pcs = room.getPeers?.() || {};
+  for (const [id, p] of peers) {
+    try { p.ping = Math.round(await room.ping(id)); } catch {}
+    const pc = pcs[id];
+    if (pc) p.path = (await detectPath(pc)) || p.path;
+  }
+  renderPeers();
+}
+setInterval(refreshPeerInfo, 3000);
+
+$('joinBtn').addEventListener('click', () => {
+  const name = $('roomInput').value.trim();
+  if (!name) { $('roomStatus').innerHTML = '<span class="err">Bitte zuerst einen Raumnamen eingeben.</span>'; return; }
+  if (room) { room.leave(); peers.clear(); renderPeers(); }
+
+  room = joinRoom({ appId: 'n64-netplay-testseite' }, name);
+  const [sChat, getChat] = room.makeAction('chat');
+  const [sN64, getN64] = room.makeAction('n64');
+  const [sName, getName] = room.makeAction('name');
+  sendChat = sChat; sendN64 = sN64; sendName = sName;
+  sendHello = (target) => sendName(myName(), target);
+
+  room.onPeerJoin(id => {
+    peers.set(id, { name: null, ping: null, path: null });
+    sendHello(id);
+    renderPeers();
+    log('chatLog', `<span class="ok">Jemand ist beigetreten (${esc(id.slice(0, 6))}).</span>`);
+  });
+  room.onPeerLeave(id => {
+    const p = peers.get(id);
+    peers.delete(id); renderPeers();
+    log('chatLog', `<span class="muted">${esc(p?.name || id.slice(0, 6))} ist gegangen.</span>`);
+  });
+  getName((n, id) => { const p = peers.get(id) || {}; p.name = String(n).slice(0, 40); peers.set(id, p); renderPeers(); });
+  getChat((msg, id) => log('chatLog', `<b>${esc(peers.get(id)?.name || id.slice(0, 6))}:</b> ${esc(String(msg).slice(0, 2000))}`));
+  getN64((data, id) => onPeerN64Data(new Uint8Array(data), id));
+
+  const url = new URL(location.href); url.search = '?raum=' + encodeURIComponent(name);
+  history.replaceState(null, '', url);
+  $('roomStatus').innerHTML = `Im Raum <b>${esc(name)}</b> (deine ID: <code>${esc(selfId.slice(0, 6))}</code>). Warte auf Mitspieler…`;
+  for (const id of ['chatInput', 'sendBtn', 'copyLinkBtn', 'testDataBtn']) $(id).disabled = false;
+});
+
+function sendChatMessage() {
+  const text = $('chatInput').value.trim();
+  if (!text || !sendChat) return;
+  sendChat(text);
+  log('chatLog', `<b>Du:</b> ${esc(text)}`);
+  $('chatInput').value = '';
+}
+$('sendBtn').addEventListener('click', sendChatMessage);
+$('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendChatMessage(); });
+
+$('copyLinkBtn').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(location.href); $('copyLinkBtn').textContent = 'Kopiert!'; }
+  catch { $('copyLinkBtn').textContent = 'Link steht in der Adresszeile'; }
+  setTimeout(() => $('copyLinkBtn').textContent = 'Einladungslink kopieren', 2000);
+});
+
+// ---------- SC64 über Web Serial ----------
+let port = null, reader = null, writer = null, rxBuf = new Uint8Array(0);
+const pending = []; // {id, resolve, reject, timer}
+
+function u32(v) { return [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]; }
+function readU32(b, o) { return ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0; }
+
+async function sendCmd(id, arg0 = 0, arg1 = 0, data = null, expectResponse = true, timeoutMs = 15000) {
+  if (!writer) throw new Error('SC64 nicht verbunden');
+  const len = data ? data.length : 0;
+  const pkt = new Uint8Array(12 + len);
+  pkt.set(enc.encode('CMD'), 0); pkt[3] = id.charCodeAt(0);
+  pkt.set(u32(arg0), 4); pkt.set(u32(arg1), 8);
+  if (data) pkt.set(data, 12);
+  let p = null;
+  if (expectResponse) {
+    p = new Promise((resolve, reject) => {
+      const entry = { id, resolve, reject };
+      entry.timer = setTimeout(() => { pending.splice(pending.indexOf(entry), 1); reject(new Error(`Zeitüberschreitung bei Befehl '${id}'`)); }, timeoutMs);
+      pending.push(entry);
+    });
+  }
+  await writer.write(pkt);
+  return p;
+}
+
+function handlePacket(kind, id, data) {
+  if (kind === 'RSP' || kind === 'ERR') {
+    const idx = pending.findIndex(e => e.id === id);
+    if (idx < 0) return;
+    const [e] = pending.splice(idx, 1);
+    clearTimeout(e.timer);
+    kind === 'RSP' ? e.resolve(data) : e.reject(new Error(`SC64 meldet Fehler bei Befehl '${id}'`));
+    return;
+  }
+  // Asynchrone Pakete
+  if (id === 'U' && data.length >= 4) {           // Daten vom N64 (USB_WRITE auf der N64-Seite)
+    const type = data[0];
+    const len = (data[1] << 16) | (data[2] << 8) | data[3];
+    const payload = data.slice(4, 4 + len);
+    bridge(`N64 → Internet: ${payload.length} Bytes (Typ ${type}) <span class="muted">${hex(payload)}</span>`);
+    if (sendN64) sendN64(payload);
+  } else if (id === 'I') {
+    bridge(`<span class="muted">IS-Viewer:</span> ${esc(dec.decode(data))}`);
+  } else if (id === 'G') {
+    bridge('<span class="err">Der N64 hat Daten nicht rechtzeitig abgeholt (verworfen).</span>');
+  } else if (id === 'B') {
+    bridge('Knopf am SC64 gedrückt.');
+  }
+}
+
+function parseRx() {
+  while (rxBuf.length >= 8) {
+    const kind = dec.decode(rxBuf.slice(0, 3));
+    if (kind !== 'RSP' && kind !== 'ERR' && kind !== 'PKT') { rxBuf = rxBuf.slice(1); continue; } // neu synchronisieren
+    const len = readU32(rxBuf, 4);
+    if (rxBuf.length < 8 + len) return;
+    const id = String.fromCharCode(rxBuf[3]);
+    const data = rxBuf.slice(8, 8 + len);
+    rxBuf = rxBuf.slice(8 + len);
+    handlePacket(kind, id, data);
+  }
+}
+
+async function readLoop() {
+  try {
+    while (port?.readable) {
+      reader = port.readable.getReader();
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const merged = new Uint8Array(rxBuf.length + value.length);
+          merged.set(rxBuf); merged.set(value, rxBuf.length);
+          rxBuf = merged; parseRx();
+        }
+      } finally { reader.releaseLock(); }
+    }
+  } catch (e) {
+    bridge(`<span class="err">Lesefehler: ${esc(e.message)}</span>`);
+  }
+}
+
+async function waitDsr(target, ms = 1000) {
+  const t0 = performance.now();
+  while (performance.now() - t0 < ms) {
+    const s = await port.getSignals();
+    if (s.dataSetReady === target) return true;
+    await new Promise(r => setTimeout(r, 10));
+  }
+  return false;
+}
+
+async function resetComm() {
+  // Laut SC64-Doku: DTR=1 → auf DSR=1 warten → Puffer leeren → DTR=0 → auf DSR=0 warten
+  try {
+    await port.setSignals({ dataTerminalReady: true });
+    await waitDsr(true);
+    rxBuf = new Uint8Array(0);
+    await port.setSignals({ dataTerminalReady: false });
+    await waitDsr(false);
+  } catch { /* nicht jedes System unterstützt die Steuerleitungen – dann ohne Reset weiter */ }
+}
+
+$('sc64ConnectBtn').addEventListener('click', async () => {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200, bufferSize: 1 << 20 });
+    await resetComm();
+    writer = port.writable.getWriter();
+    readLoop();
+    const ident = dec.decode(await sendCmd('v', 0, 0, null, true, 3000));
+    if (ident !== 'SCv2') throw new Error(`Unerwartete Kennung „${ident}“ – ist das wirklich ein SC64?`);
+    const v = await sendCmd('V');
+    const major = (v[0] << 8) | v[1], minor = (v[2] << 8) | v[3], rev = readU32(v, 4);
+    $('sc64Status').innerHTML = `<span class="ok">Verbunden: SC64, Firmware ${major}.${minor}.${rev}</span>`;
+    $('uploadBtn').disabled = false; $('sc64DisconnectBtn').disabled = false; $('sc64ConnectBtn').disabled = true;
+    bridge('SC64 verbunden. Daten vom N64 werden jetzt an den Raum weitergereicht.');
+  } catch (e) {
+    $('sc64Status').innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    await disconnect();
+  }
+});
+
+async function disconnect() {
+  try { await reader?.cancel(); } catch {}
+  try { writer?.releaseLock(); } catch {}
+  try { await port?.close(); } catch {}
+  port = reader = writer = null;
+  pending.splice(0).forEach(e => { clearTimeout(e.timer); e.reject(new Error('Getrennt')); });
+  $('uploadBtn').disabled = true; $('sc64DisconnectBtn').disabled = true; $('sc64ConnectBtn').disabled = false;
+}
+$('sc64DisconnectBtn').addEventListener('click', async () => { await disconnect(); $('sc64Status').textContent = 'Nicht verbunden.'; });
+
+// ROM-Byte-Reihenfolge erkennen und auf Big-Endian (.z64) bringen
+function toZ64(rom) {
+  const m = readU32(rom, 0);
+  if (m === 0x80371240) return { data: rom, fmt: '.z64 (passt)' };
+  const out = new Uint8Array(rom.length);
+  if (m === 0x37804012) { for (let i = 0; i + 1 < rom.length; i += 2) { out[i] = rom[i + 1]; out[i + 1] = rom[i]; } return { data: out, fmt: '.v64 → umgedreht' }; }
+  if (m === 0x40123780) { for (let i = 0; i + 3 < rom.length; i += 4) { out[i] = rom[i + 3]; out[i + 1] = rom[i + 2]; out[i + 2] = rom[i + 1]; out[i + 3] = rom[i]; } return { data: out, fmt: '.n64 → umgedreht' }; }
+  return { data: rom, fmt: 'unbekannt (unverändert)' };
+}
+
+$('uploadBtn').addEventListener('click', async () => {
+  const file = $('romFile').files[0];
+  if (!file) { $('sc64Status').innerHTML = '<span class="err">Bitte zuerst eine ROM-Datei auswählen.</span>'; return; }
+  if (file.size > 64 * 1024 * 1024) { $('sc64Status').innerHTML = '<span class="err">ROM ist größer als 64 MiB.</span>'; return; }
+  const btn = $('uploadBtn'), prog = $('uploadProgress');
+  btn.disabled = true; prog.hidden = false; prog.value = 0;
+  try {
+    const { data, fmt } = toZ64(new Uint8Array(await file.arrayBuffer()));
+    bridge(`ROM „${esc(file.name)}“: ${(data.length / 1048576).toFixed(1)} MiB, Format ${fmt}`);
+    await sendCmd('R');                                   // STATE_RESET
+    await sendCmd('C', 5, 1);                             // BOOT_MODE = ROM (über Bootloader, CIC automatisch)
+    await sendCmd('C', 6, Number($('saveType').value));   // SAVE_TYPE
+    const CHUNK = 1 << 20; const t0 = performance.now();
+    for (let off = 0; off < data.length; off += CHUNK) {
+      const part = data.subarray(off, Math.min(off + CHUNK, data.length));
+      await sendCmd('M', off, part.length, part, true, 30000); // MEMORY_WRITE ins SDRAM ab 0x0
+      prog.value = (off + part.length) / data.length;
+    }
+    const secs = (performance.now() - t0) / 1000;
+    $('sc64Status').innerHTML = `<span class="ok">ROM hochgeladen (${secs.toFixed(1)} s). Jetzt den N64 einschalten oder resetten.</span>`;
+  } catch (e) {
+    $('sc64Status').innerHTML = `<span class="err">Upload fehlgeschlagen: ${esc(e.message)}</span>`;
+  } finally { btn.disabled = !writer; }
+});
+
+// ---------- Brücke: Internet → N64 ----------
+async function onPeerN64Data(payload, id) {
+  const who = esc(peers.get(id)?.name || id.slice(0, 6));
+  bridge(`Internet → ${writer ? 'N64' : 'hier (kein SC64)'}: ${payload.length} Bytes von ${who} <span class="muted">${hex(payload)}</span>`);
+  if (!writer) return;
+  try { await sendCmd('U', 2, payload.length, payload, false); } // USB_WRITE, Typ 2 = Binärdaten, keine Antwort
+  catch (e) { bridge(`<span class="err">Weiterleiten ans SC64 fehlgeschlagen: ${esc(e.message)}</span>`); }
+}
+
+$('testDataBtn').addEventListener('click', () => {
+  const payload = crypto.getRandomValues(new Uint8Array(16));
+  sendN64?.(payload);
+  bridge(`Testdaten gesendet: <span class="muted">${hex(payload)}</span>`);
+});
+$('clearLogBtn').addEventListener('click', () => $('bridgeLog').innerHTML = '');
+</script>
+</body>
+</html>
