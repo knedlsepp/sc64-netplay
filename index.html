@@ -39,7 +39,7 @@
 <body>
 <main>
   <header>
-    <h1>N64 Netplay – Test Page <span class="muted" style="font-size:14px;font-weight:400">Version 6</span></h1>
+    <h1>N64 Netplay – Test Page <span class="muted" style="font-size:14px;font-weight:400">Version 7</span></h1>
     <p class="sub">Static page: browsers find each other via Trystero (Nostr), talk directly over WebRTC and control the SummerCart64 via Web Serial or WebUSB.</p>
   </header>
 
@@ -146,9 +146,11 @@ if (!('RTCPeerConnection' in window)) warnings.push('WebRTC is not available her
 if (warnings.length) { $('envWarn').hidden = false; $('envWarn').innerHTML = warnings.map(w => `<p class="err" style="margin:4px 0">${esc(w)}</p>`).join(''); }
 
 // ---------- Load Trystero ----------
-let joinRoom, selfId;
+// Pinned on purpose: Trystero's API changes between minor versions (0.23 and 0.27 were breaking).
+const TRYSTERO_URL = 'https://cdn.jsdelivr.net/npm/trystero@0.27.0/+esm';
+let joinRoom;
 try {
-  ({ joinRoom, selfId } = await import('https://cdn.jsdelivr.net/npm/trystero/+esm'));
+  ({ joinRoom } = await import(TRYSTERO_URL));
 } catch (e) {
   $('roomStatus').innerHTML = `<span class="err">Could not load Trystero: ${esc(e.message)}</span>`;
   $('joinBtn').disabled = true;
@@ -191,51 +193,60 @@ async function detectPath(pc) {
 
 async function refreshPeerInfo() {
   if (!room) return;
-  const pcs = room.getPeers?.() || {};
+  const infos = room.getPeers?.() || {};
   for (const [id, p] of peers) {
     try { p.ping = Math.round(await room.ping(id)); } catch {}
-    const pc = pcs[id];
-    if (pc) p.path = (await detectPath(pc)) || p.path;
+    const info = infos[id];
+    if (info?.connection) p.path = (await detectPath(info.connection)) || p.path;
+    else if (info && !info.direct) p.path = `via other peers (${info.hops} hops)`;
   }
   renderPeers();
 }
 setInterval(refreshPeerInfo, 3000);
 
-$('joinBtn').addEventListener('click', () => {
+$('joinBtn').addEventListener('click', async () => {
   const name = $('roomInput').value.trim();
   if (!name) { $('roomStatus').innerHTML = '<span class="err">Please enter a room name first.</span>'; return; }
-  if (room) { room.leave(); peers.clear(); renderPeers(); }
+  try {
+    if (room) { const old = room; room = null; peers.clear(); renderPeers(); await old.leave(); }
 
-  room = joinRoom({ appId: 'sc64-netplay' }, name);
-  const [sChat, getChat] = room.makeAction('chat');
-  const [sN64, getN64] = room.makeAction('n64');
-  const [sName, getName] = room.makeAction('name');
-  sendChat = sChat; sendN64 = sN64; sendName = sName;
-  sendHello = (target) => sendName(myName(), target);
+    room = joinRoom({ appId: 'sc64-netplay' }, name);
+    const chat = room.makeAction('chat'), n64 = room.makeAction('n64'), nameAction = room.makeAction('name');
+    const report = (what) => (e) => log('chatLog', `<span class="err">${what} failed: ${esc(e?.message || e)}</span>`);
+    sendChat = (text) => chat.send(text).catch(report('Sending the message'));
+    sendN64 = (bytes) => n64.send(bytes).catch(report('Sending N64 data'));
+    sendHello = (target) => nameAction.send(myName(), target ? { target } : undefined).catch(() => {});
 
-  room.onPeerJoin(id => {
-    peers.set(id, { name: null, ping: null, path: null });
-    sendHello(id);
-    renderPeers();
-    log('chatLog', `<span class="ok">Someone joined (${esc(id.slice(0, 6))}).</span>`);
-  });
-  room.onPeerLeave(id => {
-    const p = peers.get(id);
-    peers.delete(id); renderPeers();
-    log('chatLog', `<span class="muted">${esc(p?.name || id.slice(0, 6))} left.</span>`);
-  });
-  getName((n, id) => { const p = peers.get(id) || {}; p.name = String(n).slice(0, 40); peers.set(id, p); renderPeers(); });
-  getChat((msg, id) => {
-    const who = peers.get(id)?.name || id.slice(0, 6), text = String(msg).slice(0, 2000);
-    log('chatLog', `<b>${esc(who)}:</b> ${esc(text)}`);
-    chatToN64(`${who}: ${text}`);
-  });
-  getN64((data, id) => onPeerN64Data(new Uint8Array(data), id));
+    room.onPeerJoin(({ peerId }) => {
+      peers.set(peerId, { name: null, ping: null, path: null });
+      sendHello(peerId);
+      renderPeers();
+      log('chatLog', `<span class="ok">Someone joined (${esc(peerId.slice(0, 6))}).</span>`);
+    });
+    room.onPeerLeave(({ peerId }) => {
+      const p = peers.get(peerId);
+      peers.delete(peerId); renderPeers();
+      log('chatLog', `<span class="muted">${esc(p?.name || peerId.slice(0, 6))} left.</span>`);
+    });
+    room.onError?.(err => log('chatLog', `<span class="err">Room error: ${esc(err?.message || err)}</span>`));
+    nameAction.onMessage((n, { peerId }) => { const p = peers.get(peerId) || {}; p.name = String(n).slice(0, 40); peers.set(peerId, p); renderPeers(); });
+    chat.onMessage((msg, { peerId }) => {
+      const who = peers.get(peerId)?.name || peerId.slice(0, 6), text = String(msg).slice(0, 2000);
+      log('chatLog', `<b>${esc(who)}:</b> ${esc(text)}`);
+      chatToN64(`${who}: ${text}`);
+    });
+    n64.onMessage((data, { peerId }) => onPeerN64Data(data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength), peerId));
 
-  const url = new URL(location.href); url.search = '?room=' + encodeURIComponent(name);
-  history.replaceState(null, '', url);
-  $('roomStatus').innerHTML = `In room <b>${esc(name)}</b> (your ID: <code>${esc(selfId.slice(0, 6))}</code>). Waiting for players…`;
-  for (const id of ['chatInput', 'sendBtn', 'copyLinkBtn', 'testDataBtn']) $(id).disabled = false;
+    const url = new URL(location.href); url.search = '?room=' + encodeURIComponent(name);
+    history.replaceState(null, '', url);
+    for (const id of ['chatInput', 'sendBtn', 'copyLinkBtn', 'testDataBtn']) $(id).disabled = false;
+    $('roomStatus').innerHTML = `In room <b>${esc(name)}</b>. Waiting for players…`;
+    const self = await room.getSelf();
+    $('roomStatus').innerHTML = `In room <b>${esc(name)}</b> (your ID: <code>${esc(self.peerId.slice(0, 6))}</code>). Waiting for players…`;
+  } catch (e) {
+    console.error(e);
+    $('roomStatus').innerHTML = `<span class="err">Could not join the room: ${esc(e?.message || e)}</span>`;
+  }
 });
 
 function sendChatMessage() {
