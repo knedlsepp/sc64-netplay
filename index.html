@@ -83,7 +83,8 @@
   <section>
     <h2>4. SummerCart64</h2>
     <div class="row">
-      <button id="sc64ConnectBtn" class="primary">SC64 verbinden</button>
+      <button id="sc64ConnectBtn" class="primary">SC64 verbinden (Web Serial)</button>
+      <button id="sc64UsbBtn" class="primary" hidden>SC64 verbinden (WebUSB, Android)</button>
       <button id="sc64DisconnectBtn" disabled>Trennen</button>
       <span id="sc64Status" class="muted">Nicht verbunden.</span>
     </div>
@@ -115,7 +116,7 @@
     <div id="bridgeLog" class="log" style="margin-top:8px"></div>
   </section>
 
-  <p class="muted">Hinweise: Läuft in Chrome/Edge und Firefox ab 151 (Web Serial). Für Web Serial muss die Seite über <code>https://</code> oder <code>http://localhost</code> geöffnet werden. Die Trystero-Bibliothek wird von jsDelivr geladen.</p>
+  <p class="muted">Hinweise: Am PC Chrome/Edge oder Firefox ab 151 (Web Serial), auf Android Chrome mit USB-OTG-Kabel (WebUSB-Knopf). Für Web Serial muss die Seite über <code>https://</code> oder <code>http://localhost</code> geöffnet werden. Die Trystero-Bibliothek wird von jsDelivr geladen.</p>
 </main>
 
 <script type="module">
@@ -136,7 +137,9 @@ const bridge = (html) => log('bridgeLog', html);
 // ---------- Umgebung prüfen ----------
 const warnings = [];
 if (!window.isSecureContext) warnings.push('Die Seite läuft nicht in einem sicheren Kontext. Öffne sie über https:// oder http://localhost, sonst geht Web Serial nicht.');
-if (!('serial' in navigator)) warnings.push('Dieser Browser kann kein Web Serial. Chat und Mitspieler gehen trotzdem; für das SC64 brauchst du Chrome/Edge am Desktop oder Firefox ab 151.');
+if (!('serial' in navigator) && !('usb' in navigator)) warnings.push('Dieser Browser kann weder Web Serial noch WebUSB. Chat und Mitspieler gehen trotzdem; für das SC64 brauchst du Chrome/Edge (Desktop oder Android) oder Firefox ab 151 am Desktop.');
+if (!('serial' in navigator)) $('sc64ConnectBtn').hidden = true;
+if ('usb' in navigator) $('sc64UsbBtn').hidden = false;
 if (!('RTCPeerConnection' in window)) warnings.push('WebRTC ist hier nicht verfügbar (z. B. in einer abgeschotteten Vorschau). Öffne die Datei direkt im Browser.');
 if (warnings.length) { $('envWarn').hidden = false; $('envWarn').innerHTML = warnings.map(w => `<p class="err" style="margin:4px 0">${esc(w)}</p>`).join(''); }
 
@@ -349,9 +352,74 @@ async function resetComm() {
   } catch { /* nicht jedes System unterstützt die Steuerleitungen – dann ohne Reset weiter */ }
 }
 
-$('sc64ConnectBtn').addEventListener('click', async () => {
+// ---------- FTDI über WebUSB (für Android, wo Web Serial keine FTDI-Chips kennt) ----------
+// Bildet die Teile der Web-Serial-Schnittstelle nach, die diese Seite nutzt.
+class FtdiUsbPort {
+  constructor(device) { this.device = device; this.readable = null; this.writable = null; this.index = 1; }
+  async ctrl(request, value) {
+    const r = await this.device.controlTransferOut({ requestType: 'vendor', recipient: 'device', request, value, index: this.index });
+    if (r.status !== 'ok') throw new Error(`FTDI-Steuerbefehl ${request} fehlgeschlagen`);
+  }
+  async open() {
+    const d = this.device;
+    await d.open();
+    if (d.configuration === null) await d.selectConfiguration(1);
+    const iface = d.configuration.interfaces[0];
+    await d.claimInterface(iface.interfaceNumber);
+    const eps = iface.alternate.endpoints;
+    const epIn = eps.find(e => e.direction === 'in' && e.type === 'bulk');
+    const epOut = eps.find(e => e.direction === 'out' && e.type === 'bulk');
+    if (!epIn || !epOut) throw new Error('Keine passenden USB-Endpunkte gefunden');
+    this.epIn = epIn.endpointNumber; this.epOut = epOut.endpointNumber; this.pkt = epIn.packetSize || 512;
+    await this.ctrl(0, 0);          // Reset
+    await this.ctrl(0, 1);          // Empfangspuffer leeren
+    await this.ctrl(0, 2);          // Sendepuffer leeren
+    await this.ctrl(9, 2);          // Latenz-Timer 2 ms (kleine Pakete schneller)
+    await this.ctrl(2, 0);          // keine Flusssteuerung
+    const self = this;
+    this.readable = new ReadableStream({
+      async pull(controller) {
+        for (;;) {
+          let r;
+          try { r = await d.transferIn(self.epIn, self.pkt * 32); }
+          catch (e) { self.readable = null; controller.error(e); return; }
+          const b = new Uint8Array(r.data.buffer, r.data.byteOffset, r.data.byteLength);
+          // Jedes USB-Paket beginnt mit 2 FTDI-Statusbytes – herausschneiden
+          const parts = [];
+          for (let off = 0; off < b.length; off += self.pkt) {
+            const end = Math.min(off + self.pkt, b.length);
+            if (end - off > 2) parts.push(b.slice(off + 2, end));
+          }
+          if (parts.length) {
+            const total = parts.reduce((n, p) => n + p.length, 0);
+            const out = new Uint8Array(total); let o = 0;
+            for (const p of parts) { out.set(p, o); o += p.length; }
+            controller.enqueue(out); return;
+          }
+        }
+      },
+      cancel() { self.readable = null; }
+    });
+    this.writable = new WritableStream({
+      async write(chunk) {
+        for (let off = 0; off < chunk.length; off += 65536) {
+          const r = await d.transferOut(self.epOut, chunk.subarray(off, Math.min(off + 65536, chunk.length)));
+          if (r.status !== 'ok') throw new Error('USB-Schreibfehler');
+        }
+      }
+    });
+  }
+  async setSignals({ dataTerminalReady }) { await this.ctrl(1, dataTerminalReady ? 0x0101 : 0x0100); }
+  async getSignals() {
+    const r = await this.device.controlTransferIn({ requestType: 'vendor', recipient: 'device', request: 5, value: 0, index: this.index }, 2);
+    return { dataSetReady: !!(r.data.getUint8(0) & 0x20) };
+  }
+  async close() { this.readable = null; try { await this.device.close(); } catch {} }
+}
+
+async function connectSc64(getPort) {
   try {
-    port = await navigator.serial.requestPort();
+    port = await getPort();
     await port.open({ baudRate: 115200, bufferSize: 1 << 20 });
     await resetComm();
     writer = port.writable.getWriter();
@@ -361,13 +429,21 @@ $('sc64ConnectBtn').addEventListener('click', async () => {
     const v = await sendCmd('V');
     const major = (v[0] << 8) | v[1], minor = (v[2] << 8) | v[3], rev = readU32(v, 4);
     $('sc64Status').innerHTML = `<span class="ok">Verbunden: SC64, Firmware ${major}.${minor}.${rev}</span>`;
-    $('uploadBtn').disabled = false; $('sc64DisconnectBtn').disabled = false; $('sc64ConnectBtn').disabled = true;
+    $('uploadBtn').disabled = false; $('sc64DisconnectBtn').disabled = false; $('sc64ConnectBtn').disabled = true; $('sc64UsbBtn').disabled = true;
     bridge('SC64 verbunden. Daten vom N64 werden jetzt an den Raum weitergereicht.');
   } catch (e) {
-    $('sc64Status').innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    let msg = e.message;
+    if (e.name === 'NotFoundError') msg = 'Kein Gerät ausgewählt. Wenn die Liste leer war: USB-OTG-Kabel prüfen und auf Android den WebUSB-Knopf verwenden.';
+    if (e.name === 'SecurityError' || /claim/i.test(msg)) msg += ' – evtl. hält ein Systemtreiber das Gerät fest (auf dem PC: Web-Serial-Knopf verwenden).';
+    $('sc64Status').innerHTML = `<span class="err">${esc(msg)}</span>`;
     await disconnect();
   }
-});
+}
+
+$('sc64ConnectBtn').addEventListener('click', () => connectSc64(() => navigator.serial.requestPort()));
+$('sc64UsbBtn').addEventListener('click', () => connectSc64(async () =>
+  new FtdiUsbPort(await navigator.usb.requestDevice({ filters: [{ vendorId: 0x0403 }] }))
+));
 
 async function disconnect() {
   try { await reader?.cancel(); } catch {}
@@ -375,7 +451,7 @@ async function disconnect() {
   try { await port?.close(); } catch {}
   port = reader = writer = null;
   pending.splice(0).forEach(e => { clearTimeout(e.timer); e.reject(new Error('Getrennt')); });
-  $('uploadBtn').disabled = true; $('sc64DisconnectBtn').disabled = true; $('sc64ConnectBtn').disabled = false;
+  $('uploadBtn').disabled = true; $('sc64DisconnectBtn').disabled = true; $('sc64ConnectBtn').disabled = false; $('sc64UsbBtn').disabled = false;
 }
 $('sc64DisconnectBtn').addEventListener('click', async () => { await disconnect(); $('sc64Status').textContent = 'Nicht verbunden.'; });
 
