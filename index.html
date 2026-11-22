@@ -39,7 +39,7 @@
 <body>
 <main>
   <header>
-    <h1>N64 Netplay – Test Page <span class="muted" style="font-size:14px;font-weight:400">Version 7</span></h1>
+    <h1>N64 Netplay – Test Page <span class="muted" style="font-size:14px;font-weight:400">Version 8</span></h1>
     <p class="sub">Static page: browsers find each other via Trystero (Nostr), talk directly over WebRTC and control the SummerCart64 via Web Serial or WebUSB.</p>
   </header>
 
@@ -53,6 +53,7 @@
       <button id="joinBtn" class="primary">Join</button>
       <button id="copyLinkBtn" disabled>Copy invite link</button>
     </div>
+    <label class="muted" style="display:block;margin-top:8px"><input type="checkbox" id="keepAwake" checked> Keep the screen on while in a room (a locked phone drops the connection)</label>
     <p class="muted" id="roomStatus">Not connected yet. Everyone using the same room name finds each other automatically.</p>
   </section>
 
@@ -204,9 +205,33 @@ async function refreshPeerInfo() {
 }
 setInterval(refreshPeerInfo, 3000);
 
-$('joinBtn').addEventListener('click', async () => {
-  const name = $('roomInput').value.trim();
+// ---------- Keep the screen on & rejoin after the phone was locked ----------
+// A locked phone (or a tab in the background) gets frozen by the browser, and its WebRTC connections die.
+let wakeLock = null, currentRoom = null, hadPeers = false;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator) || !$('keepAwake').checked || !currentRoom || document.visibilityState !== 'visible') return;
+  if (wakeLock && !wakeLock.released) return;
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch { /* e.g. battery saver */ }
+}
+$('keepAwake').addEventListener('change', () => {
+  if ($('keepAwake').checked) requestWakeLock();
+  else { wakeLock?.release().catch(() => {}); wakeLock = null; }
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !currentRoom) return;
+  requestWakeLock();                                    // the browser releases the lock when the page is hidden
+  if (hadPeers && peers.size === 0) {                   // everyone is gone: most likely our side was frozen
+    log('chatLog', '<span class="muted">Back from the background – rejoining the room…</span>');
+    joinNamedRoom(currentRoom);
+  }
+});
+
+$('joinBtn').addEventListener('click', () => joinNamedRoom($('roomInput').value.trim()));
+
+async function joinNamedRoom(name) {
   if (!name) { $('roomStatus').innerHTML = '<span class="err">Please enter a room name first.</span>'; return; }
+  currentRoom = name; hadPeers = false;
+  requestWakeLock();
   try {
     if (room) { const old = room; room = null; peers.clear(); renderPeers(); await old.leave(); }
 
@@ -218,6 +243,7 @@ $('joinBtn').addEventListener('click', async () => {
     sendHello = (target) => nameAction.send(myName(), target ? { target } : undefined).catch(() => {});
 
     room.onPeerJoin(({ peerId }) => {
+      hadPeers = true;
       peers.set(peerId, { name: null, ping: null, path: null });
       sendHello(peerId);
       renderPeers();
@@ -247,7 +273,7 @@ $('joinBtn').addEventListener('click', async () => {
     console.error(e);
     $('roomStatus').innerHTML = `<span class="err">Could not join the room: ${esc(e?.message || e)}</span>`;
   }
-});
+}
 
 function sendChatMessage() {
   const text = $('chatInput').value.trim();
@@ -410,7 +436,7 @@ class FtdiUsbPort {
     await this.ctrl(0, 0);          // Reset
     await this.ctrl(0, 1);          // purge RX buffer
     await this.ctrl(0, 2);          // purge TX buffer
-    await this.ctrl(9, 2);          // latency timer 2 ms (faster small packets)
+    await this.ctrl(9, 16);         // latency timer 16 ms: fewer empty status packets, less CPU load on the phone
     await this.ctrl(2, 0);          // no flow control
     const self = this;
     this.readable = new ReadableStream({
