@@ -14,9 +14,22 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ghcr.io/dragonminded/libdragon:latest
+    env:
+      N64_INST: /opt/libdragon
     steps:
       - uses: actions/checkout@v4
+
+      - name: N64-Toolchain installieren
+        run: |
+          curl -fsSLo toolchain.deb https://github.com/DragonMinded/libdragon/releases/download/toolchain-continuous-prerelease/gcc-toolchain-mips64-amd64.deb
+          sudo apt-get install -y ./toolchain.deb
+          rm toolchain.deb
+
+      - name: libdragon bauen
+        run: |
+          git clone --depth 1 https://github.com/DragonMinded/libdragon.git "$RUNNER_TEMP/libdragon"
+          cd "$RUNNER_TEMP/libdragon"
+          sudo -E env "PATH=$PATH" ./build.sh
 
       - name: ROM bauen
         run: make -C rom
@@ -29,7 +42,6 @@ jobs:
 
       - name: ROM neben die Webseite legen (für GitHub Pages)
         run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           cp rom/chat.z64 chat.z64
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

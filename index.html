@@ -39,7 +39,7 @@
 <body>
 <main>
   <header>
-    <h1>N64 Netplay – Testseite <span class="muted" style="font-size:14px;font-weight:400">Version 4</span></h1>
+    <h1>N64 Netplay – Testseite <span class="muted" style="font-size:14px;font-weight:400">Version 5</span></h1>
     <p class="sub">Statische Seite: Browser finden sich über Trystero (Nostr), reden direkt per WebRTC und sprechen das SummerCart64 über Web Serial an.</p>
   </header>
 
@@ -100,8 +100,10 @@
         <option value="6">SRAM 1 Mbit</option>
       </select>
       <button id="uploadBtn" disabled>ROM hochladen</button>
+      <button id="chatRomBtn" disabled>N64-Chat-ROM laden</button>
     </div>
     <progress id="uploadProgress" value="0" max="1" hidden></progress>
+    <label class="muted" style="display:block;margin-top:8px"><input type="checkbox" id="chatToN64" checked> Chatnachrichten an den N64 weiterleiten (für die N64-Chat-ROM)</label>
     <p class="muted">Nach dem Upload den N64 einschalten oder resetten. Formate .z64, .v64 und .n64 werden automatisch umgedreht.</p>
   </section>
 
@@ -223,7 +225,11 @@ $('joinBtn').addEventListener('click', () => {
     log('chatLog', `<span class="muted">${esc(p?.name || id.slice(0, 6))} ist gegangen.</span>`);
   });
   getName((n, id) => { const p = peers.get(id) || {}; p.name = String(n).slice(0, 40); peers.set(id, p); renderPeers(); });
-  getChat((msg, id) => log('chatLog', `<b>${esc(peers.get(id)?.name || id.slice(0, 6))}:</b> ${esc(String(msg).slice(0, 2000))}`));
+  getChat((msg, id) => {
+    const who = peers.get(id)?.name || id.slice(0, 6), text = String(msg).slice(0, 2000);
+    log('chatLog', `<b>${esc(who)}:</b> ${esc(text)}`);
+    chatToN64(`${who}: ${text}`);
+  });
   getN64((data, id) => onPeerN64Data(new Uint8Array(data), id));
 
   const url = new URL(location.href); url.search = '?raum=' + encodeURIComponent(name);
@@ -237,6 +243,7 @@ function sendChatMessage() {
   if (!text || !sendChat) return;
   sendChat(text);
   log('chatLog', `<b>Du:</b> ${esc(text)}`);
+  chatToN64(`${myName()}: ${text}`);
   $('chatInput').value = '';
 }
 $('sendBtn').addEventListener('click', sendChatMessage);
@@ -292,8 +299,15 @@ function handlePacket(kind, id, data) {
     const type = data[0];
     const len = (data[1] << 16) | (data[2] << 8) | data[3];
     const payload = data.slice(4, 4 + len);
-    bridge(`N64 → Internet: ${payload.length} Bytes (Typ ${type}) <span class="muted">${hex(payload)}</span>`);
-    if (sendN64) sendN64(payload);
+    if (type === 1) {                              // Typ 1 = Text: als Chatnachricht in den Raum
+      const text = dec.decode(payload).slice(0, 2000);
+      log('chatLog', `<b>Du (N64):</b> ${esc(text)}`);
+      if (sendChat) sendChat('[N64] ' + text);
+      else bridge('<span class="muted">N64-Nachricht nicht verschickt: noch keinem Raum beigetreten.</span>');
+    } else {
+      bridge(`N64 → Internet: ${payload.length} Bytes (Typ ${type}) <span class="muted">${hex(payload)}</span>`);
+      if (sendN64) sendN64(payload);
+    }
   } else if (id === 'I') {
     bridge(`<span class="muted">IS-Viewer:</span> ${esc(dec.decode(data))}`);
   } else if (id === 'G') {
@@ -441,7 +455,7 @@ async function connectSc64(getPort) {
     const v = await sendCmd('V');
     const major = (v[0] << 8) | v[1], minor = (v[2] << 8) | v[3], rev = readU32(v, 4);
     $('sc64Status').innerHTML = `<span class="ok">Verbunden: SC64, Firmware ${major}.${minor}.${rev}</span>`;
-    $('uploadBtn').disabled = false; $('sc64DisconnectBtn').disabled = false; $('sc64ConnectBtn').disabled = true; $('sc64UsbBtn').disabled = true;
+    $('uploadBtn').disabled = false; $('chatRomBtn').disabled = false; $('sc64DisconnectBtn').disabled = false; $('sc64ConnectBtn').disabled = true; $('sc64UsbBtn').disabled = true;
     bridge('SC64 verbunden. Daten vom N64 werden jetzt an den Raum weitergereicht.');
   } catch (e) {
     let msg = e.message;
@@ -463,7 +477,7 @@ async function disconnect() {
   try { await port?.close(); } catch {}
   port = reader = writer = null;
   pending.splice(0).forEach(e => { clearTimeout(e.timer); e.reject(new Error('Getrennt')); });
-  $('uploadBtn').disabled = true; $('sc64DisconnectBtn').disabled = true; $('sc64ConnectBtn').disabled = false; $('sc64UsbBtn').disabled = false;
+  $('uploadBtn').disabled = true; $('chatRomBtn').disabled = true; $('sc64DisconnectBtn').disabled = true; $('sc64ConnectBtn').disabled = false; $('sc64UsbBtn').disabled = false;
 }
 $('sc64DisconnectBtn').addEventListener('click', async () => { await disconnect(); $('sc64Status').textContent = 'Nicht verbunden.'; });
 
@@ -481,14 +495,18 @@ $('uploadBtn').addEventListener('click', async () => {
   const file = $('romFile').files[0];
   if (!file) { $('sc64Status').innerHTML = '<span class="err">Bitte zuerst eine ROM-Datei auswählen.</span>'; return; }
   if (file.size > 64 * 1024 * 1024) { $('sc64Status').innerHTML = '<span class="err">ROM ist größer als 64 MiB.</span>'; return; }
-  const btn = $('uploadBtn'), prog = $('uploadProgress');
-  btn.disabled = true; prog.hidden = false; prog.value = 0;
+  await uploadRom(new Uint8Array(await file.arrayBuffer()), file.name, Number($('saveType').value));
+});
+
+async function uploadRom(bytes, name, saveType) {
+  const btns = [$('uploadBtn'), $('chatRomBtn')], prog = $('uploadProgress');
+  btns.forEach(b => b.disabled = true); prog.hidden = false; prog.value = 0;
   try {
-    const { data, fmt } = toZ64(new Uint8Array(await file.arrayBuffer()));
-    bridge(`ROM „${esc(file.name)}“: ${(data.length / 1048576).toFixed(1)} MiB, Format ${fmt}`);
+    const { data, fmt } = toZ64(bytes);
+    bridge(`ROM „${esc(name)}“: ${(data.length / 1048576).toFixed(2)} MiB, Format ${fmt}`);
     await sendCmd('R');                                   // STATE_RESET
     await sendCmd('C', 5, 1);                             // BOOT_MODE = ROM (über Bootloader, CIC automatisch)
-    await sendCmd('C', 6, Number($('saveType').value));   // SAVE_TYPE
+    await sendCmd('C', 6, saveType);                      // SAVE_TYPE
     const CHUNK = 1 << 20; const t0 = performance.now();
     for (let off = 0; off < data.length; off += CHUNK) {
       const part = data.subarray(off, Math.min(off + CHUNK, data.length));
@@ -499,16 +517,44 @@ $('uploadBtn').addEventListener('click', async () => {
     $('sc64Status').innerHTML = `<span class="ok">ROM hochgeladen (${secs.toFixed(1)} s). Jetzt den N64 einschalten oder resetten.</span>`;
   } catch (e) {
     $('sc64Status').innerHTML = `<span class="err">Upload fehlgeschlagen: ${esc(e.message)}</span>`;
-  } finally { btn.disabled = !writer; }
-});
+  } finally { btns.forEach(b => b.disabled = !writer); }
+}
 
 // ---------- Brücke: Internet → N64 ----------
+// Das SC64 hält immer nur eine Sendung für den N64 bereit, bis dieser sie abholt (er fragt einmal pro Bild nach).
+// Darum gehen die USB_WRITEs mit kleinem Abstand nacheinander raus.
+const usbQueue = []; let usbBusy = false;
+function usbSend(type, bytes) {
+  if (!writer) return;
+  usbQueue.push({ type, bytes });
+  if (!usbBusy) drainUsb();
+}
+async function drainUsb() {
+  usbBusy = true;
+  while (usbQueue.length && writer) {
+    const { type, bytes } = usbQueue.shift();
+    try { await sendCmd('U', type, bytes.length, bytes, false); }
+    catch (e) { bridge(`<span class="err">Weiterleiten ans SC64 fehlgeschlagen: ${esc(e.message)}</span>`); }
+    await new Promise(r => setTimeout(r, 150));
+  }
+  usbBusy = false;
+}
+function chatToN64(line) {
+  if (writer && $('chatToN64').checked) usbSend(1, enc.encode(line.slice(0, 400)));   // Typ 1 = Text
+}
+
+$('chatRomBtn').addEventListener('click', async () => {
+  try {
+    const res = await fetch('chat.z64', { cache: 'no-store' });
+    if (!res.ok) throw new Error('chat.z64 nicht gefunden – wird die ROM gerade noch gebaut?');
+    await uploadRom(new Uint8Array(await res.arrayBuffer()), 'N64 Chat', 0);
+  } catch (e) { $('sc64Status').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+});
+
 async function onPeerN64Data(payload, id) {
   const who = esc(peers.get(id)?.name || id.slice(0, 6));
   bridge(`Internet → ${writer ? 'N64' : 'hier (kein SC64)'}: ${payload.length} Bytes von ${who} <span class="muted">${hex(payload)}</span>`);
-  if (!writer) return;
-  try { await sendCmd('U', 2, payload.length, payload, false); } // USB_WRITE, Typ 2 = Binärdaten, keine Antwort
-  catch (e) { bridge(`<span class="err">Weiterleiten ans SC64 fehlgeschlagen: ${esc(e.message)}</span>`); }
+  usbSend(2, payload);                               // Typ 2 = Binärdaten
 }
 
 $('testDataBtn').addEventListener('click', () => {
