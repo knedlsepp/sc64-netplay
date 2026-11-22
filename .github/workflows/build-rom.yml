@@ -1,4 +1,4 @@
-name: Chat-ROM bauen
+name: Build chat ROM
 
 on:
   push:
@@ -19,36 +19,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: N64-Toolchain installieren
+      - name: Install the N64 toolchain
         run: |
           curl -fsSLo toolchain.deb https://github.com/DragonMinded/libdragon/releases/download/toolchain-continuous-prerelease/gcc-toolchain-mips64-amd64.deb
           sudo apt-get install -y ./toolchain.deb
           rm toolchain.deb
 
-      - name: libdragon bauen
+      - name: Build libdragon
         run: |
           git clone --depth 1 https://github.com/DragonMinded/libdragon.git "$RUNNER_TEMP/libdragon"
           cd "$RUNNER_TEMP/libdragon"
           sudo env "PATH=$PATH" "N64_INST=$N64_INST" ./build.sh
 
-      - name: ROM bauen
+      - name: Build the ROM
         run: make -C rom
 
-      - name: ROM als Download anhängen
+      - name: Attach the ROM as a download
         uses: actions/upload-artifact@v4
         with:
           name: chat-rom
           path: rom/chat.z64
 
-      - name: ROM neben die Webseite legen (für GitHub Pages)
+      - name: Put the ROM next to the web page (for GitHub Pages)
         run: |
           cp rom/chat.z64 chat.z64
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add chat.z64
           if git diff --cached --quiet; then
-            echo "ROM unverändert."
+            echo "ROM unchanged."
           else
-            git commit -m "Chat-ROM neu gebaut"
+            git commit -m "Rebuild chat ROM"
             git push
           fi

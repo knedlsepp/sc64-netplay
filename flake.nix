@@ -1,5 +1,5 @@
 {
-  description = "N64 Netplay: statische Webseite (Trystero/WebRTC + SummerCart64 über Web Serial/WebUSB) und N64-Chat-ROM";
+  description = "N64 Netplay: static web page (Trystero/WebRTC + SummerCart64 via Web Serial/WebUSB) and an N64 chat ROM";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -11,9 +11,9 @@
 
   outputs = { self, nixpkgs, libdragon }:
     let
-      # Der vorgebaute libdragon-Toolchain (GCC 16.2.0, mips64-elf) gibt es für Linux x86_64 und aarch64.
-      # Achtung: Upstream veröffentlicht ihn als fortlaufende Vorabversion unter einer festen URL.
-      # Wird er neu gebaut, ändert sich der Hash – dann hier die Hashes aktualisieren
+      # The prebuilt libdragon toolchain (GCC 16.2.0, mips64-elf) is available for Linux x86_64 and aarch64.
+      # Note: upstream publishes it as a continuous pre-release under a fixed URL.
+      # When it gets rebuilt the hash changes – update the hashes here
       # (nix store prefetch-file <url>).
       toolchainDebs = {
         x86_64-linux = {
@@ -48,24 +48,24 @@
             installPhase = ''
               runHook preInstall
               cp -r . $out
-              # GDB braucht Python 3.10 & Co. und wird zum Bauen nicht benötigt
+              # GDB needs Python 3.10 and friends and is not needed for building
               rm -f $out/bin/mips64-elf-gdb* $out/bin/mips64-elf-gstack
               runHook postInstall
             '';
 
-            # Die MIPS-Bibliotheken nicht mit dem Host-strip anfassen
+            # Don't touch the MIPS libraries with the host strip
             dontStrip = true;
 
             meta = {
-              description = "Vorgebauter mips64-elf-Toolchain für libdragon";
+              description = "Prebuilt mips64-elf toolchain for libdragon";
               homepage = "https://github.com/DragonMinded/libdragon";
               platforms = systems;
               sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
             };
           };
 
-          # libdragon installiert sich in denselben Präfix wie der Toolchain (N64_INST),
-          # darum wird der Toolchain hier nach $out kopiert und libdragon dazugebaut.
+          # libdragon installs itself into the same prefix as the toolchain (N64_INST),
+          # so the toolchain is copied to $out here and libdragon is built on top.
           libdragon-sdk = stdenv.mkDerivation {
             pname = "libdragon";
             version = "unstable-${libdragon.lastModifiedDate or "unknown"}";
@@ -93,7 +93,7 @@
             dontStrip = true;
 
             meta = {
-              description = "libdragon-SDK samt Toolchain (N64_INST-Präfix)";
+              description = "libdragon SDK including the toolchain (N64_INST prefix)";
               homepage = "https://libdragon.dev";
               license = lib.licenses.unlicense;
               platforms = systems;
@@ -118,10 +118,10 @@
             dontStrip = true;
             dontFixup = true;
 
-            meta.description = "N64-Chat-ROM für das SummerCart64";
+            meta.description = "N64 chat ROM for the SummerCart64";
           };
 
-          # Die statische Webseite, wie sie auf GitHub Pages liegt – mit frisch gebauter Chat-ROM
+          # The static web page as served on GitHub Pages – with a freshly built chat ROM
           web = pkgs.runCommand "sc64-netplay-web" { } ''
             mkdir -p $out
             cp ${./index.html} $out/index.html
@@ -129,13 +129,13 @@
             touch $out/.nojekyll
           '';
 
-          # Lokaler Webserver: Web Serial braucht https:// oder http://localhost
+          # Local web server: Web Serial requires https:// or http://localhost
           serve = pkgs.writeShellApplication {
             name = "sc64-netplay-serve";
             runtimeInputs = [ pkgs.python3 ];
             text = ''
               port="''${PORT:-8000}"
-              echo "N64 Netplay läuft auf http://localhost:$port/  (Strg+C beendet)"
+              echo "N64 Netplay running at http://localhost:$port/  (Ctrl+C to stop)"
               exec python3 -m http.server "$port" --bind 127.0.0.1 --directory ${web}
             '';
           };
@@ -150,7 +150,7 @@
         default = {
           type = "app";
           program = nixpkgs.lib.getExe self.packages.${system}.serve;
-          meta.description = "Webseite lokal auf http://localhost:8000 ausliefern";
+          meta.description = "Serve the web page locally at http://localhost:8000";
         };
       });
 
@@ -159,7 +159,7 @@
           packages = [ self.packages.${system}.libdragon pkgs.gnumake pkgs.python3 ];
           N64_INST = "${self.packages.${system}.libdragon}";
           shellHook = ''
-            echo "libdragon bereit (N64_INST=$N64_INST). ROM bauen: make -C rom"
+            echo "libdragon ready (N64_INST=$N64_INST). Build the ROM with: make -C rom"
           '';
         };
       });

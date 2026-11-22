@@ -1,31 +1,31 @@
-// N64 Chat – ein kleiner Chat-Client für das SummerCart64.
+// N64 Chat – a small chat client for the SummerCart64.
 //
-// Die Webseite (index.html) leitet Chatnachrichten aus dem Internet per USB an den N64 weiter
-// und schickt alles, was hier getippt wird, an die anderen im Raum.
+// The web page (index.html) forwards chat messages from the internet to the N64 over USB
+// and sends everything typed here to the other people in the room.
 //
-// Bedienung:
-//   Stick / Steuerkreuz  Taste auf der Bildschirmtastatur wählen
-//   A                    Taste tippen
-//   B                    letztes Zeichen löschen
-//   R                    Leerzeichen
-//   Z                    Groß-/Kleinschreibung umschalten
-//   START                Nachricht senden
+// Controls:
+//   Stick / D-pad   select a key on the on-screen keyboard
+//   A               type the key
+//   B               delete the last character
+//   R               space
+//   Z               toggle upper/lower case
+//   START           send the message
 
 #include <libdragon.h>
 #include <usb.h>
 #include <string.h>
 #include <stdio.h>
 
-#define COLS        40              // 320 px / 8 px Schrift
-#define HIST_TOP    2               // erste Zeile des Verlaufs
-#define HIST_ROWS   14              // Zeilen für den Verlauf (2..15)
+#define COLS        40              // 320 px / 8 px font
+#define HIST_TOP    2               // first row of the history
+#define HIST_ROWS   14              // rows for the history (2..15)
 #define INPUT_ROW   17
-#define KB_TOP      19              // Tastenzeilen 19,21,23,25; Sondertasten 27
+#define KB_TOP      19              // key rows 19,21,23,25; special keys 27
 #define MAX_INPUT   120
 #define MAX_LINES   64
 #define LINE_LEN    (COLS - 2)
 
-// ---------- Nachrichtenverlauf (bereits umgebrochen) ----------
+// ---------- Message history (already wrapped) ----------
 typedef struct { char text[LINE_LEN + 1]; uint8_t own; } line_t;
 static line_t lines[MAX_LINES];
 static int line_count = 0;
@@ -42,7 +42,7 @@ static void push_line(const char *s, int len, uint8_t own) {
     l->own = own;
 }
 
-// Bricht eine Nachricht an Wortgrenzen auf LINE_LEN Zeichen um.
+// Wraps a message at word boundaries to LINE_LEN characters.
 static void add_message(const char *msg, uint8_t own) {
     int len = strlen(msg);
     int pos = 0;
@@ -61,7 +61,7 @@ static void add_message(const char *msg, uint8_t own) {
     if (len == 0) push_line("", 0, own);
 }
 
-// UTF-8 → ASCII für die eingebaute 8x8-Schrift (Umlaute werden umschrieben).
+// UTF-8 → ASCII for the built-in 8x8 font (German umlauts are transliterated).
 static void utf8_to_ascii(const uint8_t *in, int n, char *out, int outsize) {
     int o = 0;
     for (int i = 0; i < n && o < outsize - 3; i++) {
@@ -79,7 +79,7 @@ static void utf8_to_ascii(const uint8_t *in, int n, char *out, int outsize) {
             while (*rep && o < outsize - 1) out[o++] = *rep++;
             continue;
         }
-        if (c >= 0x80) {                       // andere Mehrbyte-Zeichen überspringen
+        if (c >= 0x80) {                       // skip other multi-byte characters
             int extra = (c >= 0xF0) ? 3 : (c >= 0xE0) ? 2 : (c >= 0xC0) ? 1 : 0;
             i += extra;
             out[o++] = '?';
@@ -88,15 +88,15 @@ static void utf8_to_ascii(const uint8_t *in, int n, char *out, int outsize) {
     out[o] = 0;
 }
 
-// ---------- Bildschirmtastatur ----------
+// ---------- On-screen keyboard ----------
 static const char *kb_rows[2][4] = {
-    { "1234567890", "qwertzuiop", "asdfghjkl!", "yxcvbnm,.?" },
-    { "1234567890", "QWERTZUIOP", "ASDFGHJKL:", "YXCVBNM-+'" },
+    { "1234567890", "qwertyuiop", "asdfghjkl!", "zxcvbnm,.?" },
+    { "1234567890", "QWERTYUIOP", "ASDFGHJKL:", "ZXCVBNM-+'" },
 };
 #define KB_COLS 10
-#define KB_ROWS 5                    // 4 Zeichenzeilen + 1 Zeile mit Sondertasten
+#define KB_ROWS 5                    // 4 character rows + 1 row of special keys
 enum { SP_SPACE, SP_DEL, SP_SEND, SP_SHIFT, SP_COUNT };
-static const char *sp_labels[SP_COUNT] = { "LEER", "DEL", "SENDEN", "ABC" };
+static const char *sp_labels[SP_COUNT] = { "SPACE", "DEL", "SEND", "ABC" };
 
 static int kb_x = 0, kb_y = 1, shift = 0;
 static char input[MAX_INPUT + 1];
@@ -116,9 +116,9 @@ static void send_input(void) {
     if (input_len == 0) return;
     if (usb_ok) usb_write(DATATYPE_TEXT, input, input_len);
     char buf[MAX_INPUT + 8];
-    snprintf(buf, sizeof buf, "Du: %s", input);
+    snprintf(buf, sizeof buf, "You: %s", input);
     add_message(buf, 1);
-    if (!usb_ok) add_message("(nicht gesendet: kein USB)", 1);
+    if (!usb_ok) add_message("(not sent: no USB)", 1);
     input_len = 0; input[0] = 0;
 }
 
@@ -138,7 +138,7 @@ static void move_cursor(int dx, int dy) {
         kb_y = (kb_y + dy + KB_ROWS) % KB_ROWS;
     }
     if (dx) {
-        if (kb_y == 4) {                       // Sondertasten springen ganze Felder
+        if (kb_y == 4) {                       // special keys jump whole fields
             int sp = kb_x * SP_COUNT / KB_COLS;
             sp = (sp + dx + SP_COUNT) % SP_COUNT;
             kb_x = sp * KB_COLS / SP_COUNT + 1;
@@ -148,7 +148,7 @@ static void move_cursor(int dx, int dy) {
     }
 }
 
-// ---------- USB-Empfang ----------
+// ---------- USB receive ----------
 static void poll_usb(void) {
     if (!usb_ok) return;
     for (int guard = 0; guard < 4; guard++) {
@@ -166,13 +166,13 @@ static void poll_usb(void) {
             add_message(text, 0);
         } else {
             char info[48];
-            snprintf(info, sizeof info, "[%d Bytes Binaerdaten, Typ %d]", size, type);
+            snprintf(info, sizeof info, "[%d bytes of binary data, type %d]", size, type);
             add_message(info, 0);
         }
     }
 }
 
-// ---------- Zeichnen ----------
+// ---------- Drawing ----------
 static uint32_t C_BG, C_TEXT, C_DIM, C_OWN, C_ACCENT, C_KEY, C_KEYSEL, C_TITLE;
 
 static void text_at(surface_t *d, int col, int row, const char *s, uint32_t fg, uint32_t bg) {
@@ -183,23 +183,23 @@ static void text_at(surface_t *d, int col, int row, const char *s, uint32_t fg, 
 static void draw(surface_t *d, int frame) {
     graphics_fill_screen(d, C_BG);
 
-    // Titelzeile
+    // Title bar
     graphics_draw_box(d, 0, 0, 320, 10, C_TITLE);
     text_at(d, 1, 0, "N64 CHAT", C_TEXT, 0);
-    text_at(d, 22, 0, usb_ok ? "USB: SC64 bereit" : "USB: nicht gefunden", usb_ok ? C_ACCENT : C_OWN, 0);
+    text_at(d, 22, 0, usb_ok ? "USB: SC64 ready" : "USB: not found", usb_ok ? C_ACCENT : C_OWN, 0);
 
-    // Verlauf (die letzten HIST_ROWS Zeilen)
+    // History (the last HIST_ROWS lines)
     int start = line_count > HIST_ROWS ? line_count - HIST_ROWS : 0;
     for (int i = start; i < line_count; i++) {
         text_at(d, 1, HIST_TOP + (i - start), lines[i].text, lines[i].own ? C_ACCENT : C_TEXT, 0);
     }
     if (line_count == 0) {
-        text_at(d, 1, HIST_TOP + 1, "Warte auf Nachrichten...", C_DIM, 0);
-        text_at(d, 1, HIST_TOP + 3, "Webseite: SC64 verbinden und", C_DIM, 0);
-        text_at(d, 1, HIST_TOP + 4, "einem Raum beitreten.", C_DIM, 0);
+        text_at(d, 1, HIST_TOP + 1, "Waiting for messages...", C_DIM, 0);
+        text_at(d, 1, HIST_TOP + 3, "On the web page: connect the SC64", C_DIM, 0);
+        text_at(d, 1, HIST_TOP + 4, "and join a room.", C_DIM, 0);
     }
 
-    // Eingabezeile (zeigt das Ende, wenn der Text zu lang ist)
+    // Input line (shows the end if the text is too long)
     graphics_draw_box(d, 0, INPUT_ROW * 8 - 2, 320, 12, C_KEY);
     char shown[COLS + 1];
     int tail_len = input_len > COLS - 4 ? COLS - 4 : input_len;
@@ -209,7 +209,7 @@ static void draw(surface_t *d, int frame) {
     shown[3 + tail_len] = 0;
     text_at(d, 0, INPUT_ROW, shown, C_TEXT, 0);
 
-    // Tastatur: jede Taste 3 Spalten breit, ab Spalte 5
+    // Keyboard: each key 3 columns wide, starting at column 5
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < KB_COLS; c++) {
             int sel = (r == kb_y && c == kb_x);
@@ -227,7 +227,7 @@ static void draw(surface_t *d, int frame) {
         const char *label = (s == SP_SHIFT) ? (shift ? "abc" : "ABC") : sp_labels[s];
         text_at(d, col, KB_TOP + 8, label, sel ? C_BG : C_TEXT, 0);
     }
-    text_at(d, 1, 29, "A tippen B loeschen R leer START senden", C_DIM, 0);
+    text_at(d, 1, 29, "A type  B delete  R space  START send", C_DIM, 0);
 }
 
 int main(void) {
@@ -245,7 +245,7 @@ int main(void) {
 
     usb_ok = usb_initialize() && usb_getcart() == CART_SC64;
     if (usb_ok) {
-        const char *hello = "N64 Chat ist bereit";
+        const char *hello = "N64 Chat is ready";
         usb_write(DATATYPE_TEXT, hello, strlen(hello));
     }
 
@@ -254,7 +254,7 @@ int main(void) {
         joypad_poll();
         joypad_buttons_t p = joypad_get_buttons_pressed(JOYPAD_PORT_1);
 
-        // Richtung mit Tastenwiederholung
+        // Direction with key repeat
         int dir = joypad_get_direction(JOYPAD_PORT_1, JOYPAD_2D_LH);
         int fire = 0;
         if (dir != last_dir) { fire = (dir != JOYPAD_8WAY_NONE); repeat = 15; }
