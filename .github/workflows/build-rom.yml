@@ -1,0 +1,42 @@
+name: Chat-ROM bauen
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'rom/**'
+      - '.github/workflows/build-rom.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/dragonminded/libdragon:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ROM bauen
+        run: make -C rom
+
+      - name: ROM als Download anhängen
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-rom
+          path: rom/chat.z64
+
+      - name: ROM neben die Webseite legen (für GitHub Pages)
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          cp rom/chat.z64 chat.z64
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add chat.z64
+          if git diff --cached --quiet; then
+            echo "ROM unverändert."
+          else
+            git commit -m "Chat-ROM neu gebaut"
+            git push
+          fi
