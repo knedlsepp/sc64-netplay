@@ -39,7 +39,7 @@
 <body>
 <main>
   <header>
-    <h1>N64 Netplay – Testseite</h1>
+    <h1>N64 Netplay – Testseite <span class="muted" style="font-size:14px;font-weight:400">Version 3</span></h1>
     <p class="sub">Statische Seite: Browser finden sich über Trystero (Nostr), reden direkt per WebRTC und sprechen das SummerCart64 über Web Serial an.</p>
   </header>
 
@@ -250,6 +250,7 @@ $('copyLinkBtn').addEventListener('click', async () => {
 
 // ---------- SC64 über Web Serial ----------
 let port = null, reader = null, writer = null, rxBuf = new Uint8Array(0);
+let rxTotal = 0, rxFirst = new Uint8Array(0); // Diagnose: wie viel kam überhaupt zurück?
 const pending = []; // {id, resolve, reject, timer}
 
 function u32(v) { return [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]; }
@@ -266,7 +267,10 @@ async function sendCmd(id, arg0 = 0, arg1 = 0, data = null, expectResponse = tru
   if (expectResponse) {
     p = new Promise((resolve, reject) => {
       const entry = { id, resolve, reject };
-      entry.timer = setTimeout(() => { pending.splice(pending.indexOf(entry), 1); reject(new Error(`Zeitüberschreitung bei Befehl '${id}'`)); }, timeoutMs);
+      entry.timer = setTimeout(() => {
+        pending.splice(pending.indexOf(entry), 1);
+        reject(new Error(`Zeitüberschreitung bei Befehl '${id}' (bisher ${rxTotal} Bytes empfangen${rxTotal ? ': ' + hex(rxFirst) : ''})`));
+      }, timeoutMs);
       pending.push(entry);
     });
   }
@@ -320,6 +324,8 @@ async function readLoop() {
         for (;;) {
           const { value, done } = await reader.read();
           if (done) break;
+          if (rxTotal < 32) { const m = new Uint8Array(rxFirst.length + value.length); m.set(rxFirst); m.set(value, rxFirst.length); rxFirst = m.slice(0, 32); }
+          rxTotal += value.length;
           const merged = new Uint8Array(rxBuf.length + value.length);
           merged.set(rxBuf); merged.set(value, rxBuf.length);
           rxBuf = merged; parseRx();
@@ -334,22 +340,27 @@ async function readLoop() {
 async function waitDsr(target, ms = 1000) {
   const t0 = performance.now();
   while (performance.now() - t0 < ms) {
-    const s = await port.getSignals();
-    if (s.dataSetReady === target) return true;
+    try {
+      const s = await port.getSignals();
+      if (s.dataSetReady === target) return 'ok';
+    } catch (e) { return 'Fehler: ' + e.message; }
     await new Promise(r => setTimeout(r, 10));
   }
-  return false;
+  return 'Zeitüberschreitung';
 }
 
 async function resetComm() {
-  // Laut SC64-Doku: DTR=1 → auf DSR=1 warten → Puffer leeren → DTR=0 → auf DSR=0 warten
-  try {
-    await port.setSignals({ dataTerminalReady: true });
-    await waitDsr(true);
-    rxBuf = new Uint8Array(0);
-    await port.setSignals({ dataTerminalReady: false });
-    await waitDsr(false);
-  } catch { /* nicht jedes System unterstützt die Steuerleitungen – dann ohne Reset weiter */ }
+  // Laut SC64-Doku: DTR=1 → auf DSR=1 warten → Puffer leeren → DTR=0 → auf DSR=0 warten.
+  // Wichtig: DTR muss am Ende auf jeden Fall wieder 0 sein, sonst bleibt die USB-Schnittstelle des SC64 aus.
+  const steps = [];
+  try { await port.setSignals({ dataTerminalReady: true }); steps.push('DTR=1 ok'); }
+  catch (e) { steps.push('DTR=1 Fehler: ' + e.message); }
+  steps.push('DSR→1 ' + await waitDsr(true));
+  rxBuf = new Uint8Array(0);
+  try { await port.setSignals({ dataTerminalReady: false }); steps.push('DTR=0 ok'); }
+  catch (e) { steps.push('DTR=0 Fehler: ' + e.message); }
+  steps.push('DSR→0 ' + await waitDsr(false));
+  bridge(`<span class="muted">Reset: ${esc(steps.join(', '))}</span>`);
 }
 
 // ---------- FTDI über WebUSB (für Android, wo Web Serial keine FTDI-Chips kennt) ----------
@@ -420,6 +431,7 @@ class FtdiUsbPort {
 async function connectSc64(getPort) {
   try {
     port = await getPort();
+    rxTotal = 0; rxFirst = new Uint8Array(0);
     await port.open({ baudRate: 115200, bufferSize: 1 << 20 });
     await resetComm();
     writer = port.writable.getWriter();
